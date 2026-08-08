@@ -20,6 +20,18 @@ test('media session parsing prefers the Netflix player', () => {
   assert.strictEqual(parsed.updatedAt, 4242);
 });
 
+test('adb devices parser prefers a Fire TV when asked', () => {
+  const devices = parseAdbDevices(`
+List of devices attached
+adb-D2426F3123270432-tz6ENw._adb-tls-connect._tcp	device product:d2426 model:D2426
+192.168.1.60:5555	device product:mantis model:AFTM device:mantis
+`);
+  assert.strictEqual(
+    pickAdbSerial(devices, { prefer: 'firetv' }),
+    '192.168.1.60:5555'
+  );
+});
+
 test('adb devices parser prefers a live wireless Capsule', () => {
   const devices = parseAdbDevices(`
 List of devices attached

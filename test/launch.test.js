@@ -143,6 +143,56 @@ test('roku launch discovers the TV and joins the host room', async () => {
   assert.strictEqual(resolved.name, 'Living Room');
 });
 
+test('firetv launch connects over ADB and joins the host room', async () => {
+  let connected = '';
+  const resolved = await resolveDeviceLaunch(
+    { device: 'firetv' },
+    fakeStore({
+      server: 'https://duet.example',
+      email: 'host@example.com',
+      session: 'live-token',
+    }),
+    {
+      kind: 'firetv',
+      canPrompt: () => false,
+      sessionValid: async () => true,
+      fetchMineRooms: async () => [{ code: 'FIRE01', members: 1, createdAt: 1 }],
+      listDevices: async () => [{ serial: '192.168.1.60:5555', status: 'device', extra: 'model:AFTM' }],
+      adbConnect: async (host) => {
+        connected = host;
+        return `${host}:5555`;
+      },
+      log: () => {},
+    }
+  );
+  assert.strictEqual(resolved.device, 'firetv');
+  assert.strictEqual(resolved.room, 'FIRE01');
+  assert.strictEqual(resolved.serial, '192.168.1.60:5555');
+  assert.strictEqual(connected, '');
+});
+
+test('firetv launch can adb-connect from a saved IP', async () => {
+  const resolved = await resolveDeviceLaunch(
+    { device: 'firetv' },
+    fakeStore({
+      email: 'host@example.com',
+      session: 'tok',
+      firetvHost: '192.168.1.77',
+    }),
+    {
+      kind: 'firetv',
+      canPrompt: () => false,
+      sessionValid: async () => true,
+      fetchMineRooms: async () => [{ code: 'FIRE02', members: 1, createdAt: 1 }],
+      listDevices: async () => [],
+      adbConnect: async (host, port) => `${host}:${port || 5555}`,
+      log: () => {},
+    }
+  );
+  assert.strictEqual(resolved.serial, '192.168.1.77:5555');
+  assert.strictEqual(resolved.room, 'FIRE02');
+});
+
 test('roku launch fails when none are on the Wi-Fi', async () => {
   await assert.rejects(
     () =>

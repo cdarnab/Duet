@@ -204,6 +204,23 @@ If you have no extra computer next to the Roku, skip the agent: open
 `https://duet.arnabbanik.com/tv.html#YOURCODE` on your phone and follow the cue
 console while Netflix plays on the Roku.
 
+**Fire TV / Toshiba Fire TV Edition + partner laptop.** Same idea as Roku: native
+Netflix on the TV, extension on the MacBook, helper Mac on the TV’s Wi-Fi.
+
+1. On the Fire TV: Settings → **My Fire TV** → About (click 7 times) → Developer
+   options → **ADB debugging** On → **ADB over network** On. Note the IP.
+2. Phone or laptop: create the Duet room.
+3. On a computer on that Wi-Fi:
+
+```bash
+brew install android-platform-tools   # once
+npm run firetv:login                  # once, same Keychain login
+npm run firetv                        # or double-click scripts/duet-firetv.command
+# if it asks, enter the Fire TV IP
+```
+
+4. Fire TV Netflix → same title → pause. Partner: extension → **Count us in**.
+
 **Nebula Capsule (Nebula Play → Netflix Installation Guide), no HDMI.** That
 Netflix is a phone APK. You pick the movie with Nebula Connect mouse mode; Duet
 cannot tap that UI. After the title is open and paused, run the agent **on this
