@@ -175,6 +175,43 @@ test('the TV appears in the room roster with its real position', async () => {
   peer.ws.close();
 });
 
+test('a TV pause in open loop still pauses the browser side', async () => {
+  await ensureServer();
+  const room = 'AGENTP';
+
+  const device = new MockDriver({ startPosition: 50, readPosition: false, readPaused: true, latencyMs: 40 });
+  const peer = browserPeer(room);
+  await sleep(300);
+
+  const agent = new Agent({ server: `http://127.0.0.1:${PORT}`, room, driver: device, pollMs: 400 });
+  await agent.start();
+  await sleep(900);
+
+  peer.setState({ paused: false, position: 50 });
+  await sleep(4000);
+  assert.strictEqual(device.paused, false, 'TV should be playing with the room');
+
+  const paused = new Promise((resolve) => {
+    const onMsg = (raw) => {
+      const msg = JSON.parse(raw);
+      if (msg.type === 'state' && msg.state?.paused === true) {
+        peer.ws.off('message', onMsg);
+        resolve(msg);
+      }
+    };
+    peer.ws.on('message', onMsg);
+  });
+
+  try {
+    device.paused = true;
+    const got = await Promise.race([paused, sleep(3500).then(() => null)]);
+    assert.ok(got, 'browser should see a pause state from the TV');
+  } finally {
+    agent.stop();
+    peer.ws.close();
+  }
+});
+
 test('a device that cannot report position still follows play and pause', async () => {
   await ensureServer();
   const room = 'AGENTE';
@@ -207,7 +244,7 @@ test('a device that cannot report position still follows play and pause', async 
  */
 test('a device that rounds its position to the second is not thrashed', async () => {
   await ensureServer();
-  const room = 'AGENTF';
+  const room = 'AGENTQ';
 
   const device = new MockDriver({
     startPosition: 400,
@@ -221,26 +258,28 @@ test('a device that rounds its position to the second is not thrashed', async ()
 
   const agent = new Agent({ server: `http://127.0.0.1:${PORT}`, room, driver: device, pollMs: 400 });
   await agent.start();
-  await sleep(500);
+  try {
+    await sleep(500);
 
-  const corrections = [];
-  agent.on('correcting', (c) => corrections.push(c));
+    const corrections = [];
+    agent.on('correcting', (c) => corrections.push(c));
 
-  // Start both sides together at the same point, then just let them run.
-  device.paused = false;
-  peer.setState({ paused: false, position: 400 });
-  await runClock(device, 6000);
+    // Start both sides together at the same point, then just let them run.
+    device.paused = false;
+    peer.setState({ paused: false, position: 400 });
+    await runClock(device, 6000);
 
-  assert.ok(
-    corrections.length <= 1,
-    `rounding noise alone triggered ${corrections.length} corrections`
-  );
+    assert.ok(
+      corrections.length <= 1,
+      `rounding noise alone triggered ${corrections.length} corrections`
+    );
 
-  const drift = device.position_ - agent.expectedPosition();
-  assert.ok(Math.abs(drift) < 1.5, `ended ${drift.toFixed(2)}s apart`);
-
-  agent.stop();
-  peer.ws.close();
+    const drift = device.position_ - agent.expectedPosition();
+    assert.ok(Math.abs(drift) < 1.5, `ended ${drift.toFixed(2)}s apart`);
+  } finally {
+    agent.stop();
+    peer.ws.close();
+  }
 });
 
 test.after(() => server.close());

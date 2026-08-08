@@ -92,6 +92,8 @@ function wireAgent(agent, driver) {
     console.log(`Command latency: ~${caps.commandLatencyMs}ms`);
     if (caps.readPosition) {
       console.log('Position readback: yes — running closed loop, expect around a second.\n');
+    } else if (caps.readPaused) {
+      console.log('Position readback: no, but pause/play is visible — those follow both ways.\n');
     } else {
       console.log('Position readback: no — this app does not publish its playhead.');
       console.log('Running open loop: play, pause, and countdowns stay in sync, but drift');
@@ -118,8 +120,8 @@ function wireAgent(agent, driver) {
   agent.on('error', (err) => console.error(`  ${err.message}`));
 }
 
-async function startAgent({ server, room, driver, name, session }) {
-  const agent = new Agent({ server, room, driver, name, session });
+async function startAgent({ server, room, driver, name, session, pollMs }) {
+  const agent = new Agent({ server, room, driver, name, session, pollMs });
   wireAgent(agent, driver);
   await agent.start();
   process.on('SIGINT', () => {
@@ -174,6 +176,7 @@ async function main() {
       driver,
       name: resolved.name,
       session: resolved.session,
+      pollMs: 800,
     });
     return;
   }

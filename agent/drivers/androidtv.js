@@ -53,11 +53,14 @@ function parseMediaSession(dump, prefer = /netflix/i) {
   for (const chunk of chunks) {
     const match =
       /state=PlaybackState\s*\{state=(\d+),\s*position=(\d+)[\s\S]*?updated=(\d+)/.exec(chunk) ||
-      /state=PlaybackState\s*\{state=(\d+),\s*position=(\d+)/.exec(chunk);
+      /state=PlaybackState\s*\{state=(\d+),\s*position=(\d+)/.exec(chunk) ||
+      /PlaybackState\s*\{state=(\d+)/.exec(chunk);
     if (!match) continue;
+    const state = Number(match[1]);
+    const positionMs = match[2] !== undefined ? Number(match[2]) : null;
     hits.push({
-      state: Number(match[1]),
-      positionMs: Number(match[2]),
+      state,
+      positionMs: Number.isFinite(positionMs) ? positionMs : null,
       updatedAt: match[3] ? Number(match[3]) : null,
       preferred: prefer.test(chunk),
     });
@@ -65,10 +68,40 @@ function parseMediaSession(dump, prefer = /netflix/i) {
   const hit = hits.sort((a, b) => Number(b.preferred) - Number(a.preferred))[0];
   if (!hit) return null;
   return {
-    position: hit.positionMs / 1000,
-    paused: hit.state !== 3,
+    position: hit.positionMs == null ? null : hit.positionMs / 1000,
+    paused: hit.state !== 3 && hit.state !== 6,
     updatedAt: hit.updatedAt,
   };
+}
+
+/**
+ * Fallback when the app never publishes a MediaSession (Nebula’s phone Netflix).
+ * dumpsys audio still reports whether a USAGE_MEDIA player is started or paused.
+ */
+function parseAudioPlayback(dump) {
+  if (!dump) return null;
+  const chunks = String(dump).split(/(?=AudioPlaybackConfiguration\b)/i);
+  const hits = [];
+  for (const chunk of chunks) {
+    const stateMatch = /\bstate:(started|paused|stopped|idle)\b/i.exec(chunk);
+    if (!stateMatch) continue;
+    const usage = /USAGE_([A-Z0-9_]+)/i.exec(chunk);
+    const content = /CONTENT_TYPE_([A-Z0-9_]+)/i.exec(chunk);
+    const usageName = (usage?.[1] || '').toUpperCase();
+    const contentName = (content?.[1] || '').toUpperCase();
+    if (/NOTIFICATION|ALARM|RINGTONE|ENFORCED|ASSISTANT|ASSISTANCE|SONIFICATION/.test(usageName + contentName)) {
+      continue;
+    }
+    if (usageName && !/MEDIA|GAME/.test(usageName) && !/MOVIE|MUSIC|SPEECH/.test(contentName)) {
+      continue;
+    }
+    hits.push({
+      paused: stateMatch[1].toLowerCase() !== 'started',
+      preferred: /MOVIE|MEDIA/.test(`${usageName} ${contentName}`) || /netflix/i.test(chunk),
+    });
+  }
+  const hit = hits.sort((a, b) => Number(b.preferred) - Number(a.preferred))[0];
+  return hit ? { paused: hit.paused, position: null } : null;
 }
 
 class AndroidTvDriver {
@@ -82,6 +115,7 @@ class AndroidTvDriver {
     this.label = this.serial;
     this.capabilities = {
       readPosition: false,
+      readPaused: false,
       canJump: true,
       jumpBack,
       jumpForward,
@@ -100,20 +134,30 @@ class AndroidTvDriver {
     await this._shell('echo ping');
     this.capabilities.commandLatencyMs = Date.now() - t0;
 
-    this.capabilities.readPosition = (await this.position()) !== null;
+    const probe = await this.position();
+    this.capabilities.readPosition = Boolean(probe && Number.isFinite(probe.position));
+    this.capabilities.readPaused = Boolean(probe && typeof probe.paused === 'boolean');
     return this;
   }
 
-  play() {
-    return this._key(this.flavor === 'nebula' ? KEY.playPause : KEY.play);
+  async play(known) {
+    if (this.flavor === 'nebula') return this._toggleTo(false, known);
+    return this._key(KEY.play);
   }
 
-  pause() {
-    return this._key(this.flavor === 'nebula' ? KEY.playPause : KEY.pause);
+  async pause(known) {
+    if (this.flavor === 'nebula') return this._toggleTo(true, known);
+    return this._key(KEY.pause);
   }
 
-  resume() {
-    return this._key(this.flavor === 'nebula' ? KEY.playPause : KEY.play);
+  async resume(known) {
+    return this.play(known);
+  }
+
+  async _toggleTo(paused, known) {
+    const state = known && typeof known.paused === 'boolean' ? known : await this.position();
+    if (state && state.paused === paused) return;
+    return this._key(KEY.playPause);
   }
 
   async jump(dir, times = 1) {
@@ -126,20 +170,27 @@ class AndroidTvDriver {
 
   /**
    * The media session reports position as of a timestamp, not as of now, so
-   * the reading is projected forward before it is used.
+   * the reading is projected forward before it is used. Nebula’s phone Netflix
+   * often has no session — fall back to dumpsys audio for pause/play only.
    */
   async position() {
     try {
-      const out = await this._shell('dumpsys media_session');
-      const parsed = parseMediaSession(out);
-      if (!parsed) return null;
-
-      let position = parsed.position;
-      const uptime = await this._uptimeMs();
-      if (!parsed.paused && uptime && parsed.updatedAt) {
-        position += Math.max(0, (uptime - parsed.updatedAt) / 1000);
+      const sessionDump = await this._shell('dumpsys media_session');
+      const session = parseMediaSession(sessionDump);
+      if (session && typeof session.paused === 'boolean') {
+        let position = session.position;
+        if (Number.isFinite(position) && !session.paused && session.updatedAt) {
+          const uptime = await this._uptimeMs();
+          if (uptime) position += Math.max(0, (uptime - session.updatedAt) / 1000);
+        }
+        return { position: Number.isFinite(position) ? position : null, paused: session.paused };
       }
-      return { position, paused: parsed.paused };
+    } catch {
+      /* try audio */
+    }
+    try {
+      const audioDump = await this._shell('dumpsys audio');
+      return parseAudioPlayback(audioDump);
     } catch {
       return null;
     }
@@ -171,6 +222,7 @@ module.exports = {
   AndroidTvDriver,
   KEY,
   parseMediaSession,
+  parseAudioPlayback,
   parseAdbDevices,
   pickAdbSerial,
   listAdbDevices,

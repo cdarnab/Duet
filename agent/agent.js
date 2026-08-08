@@ -38,6 +38,9 @@ class Agent extends EventEmitter {
     this.lastDrift = null;
     this.holdingRoom = false;
     this._assumedPaused = true;
+    this._commandUntil = 0;
+    this._deviceStable = false;
+    this._stableSince = 0;
     this.stopped = false;
     this._timers = [];
   }
@@ -97,6 +100,10 @@ class Agent extends EventEmitter {
       case 'state':
         this.state = msg.state;
         this.emit('roomstate', msg.state);
+        if (msg.resync) {
+          this._deviceStable = false;
+          this._mirrorTransport().catch((err) => this.emit('error', err));
+        }
         break;
       case 'cue':
         this._runCue(msg.startAt);
@@ -145,10 +152,40 @@ class Agent extends EventEmitter {
 
     const reading = await this.driver.position();
     const expected = this.expectedPosition();
+    const pausedKnown = Boolean(reading && typeof reading.paused === 'boolean');
+    const positionKnown = Boolean(reading && Number.isFinite(reading.position));
 
-    if (!reading) {
-      // Open loop: we can mirror play and pause, but we cannot verify position.
-      await this._mirrorTransport();
+    if (this._shouldPublishTransport(reading)) {
+      this._assumedPaused = reading.paused;
+      this._deviceStable = true;
+      this._stableSince = Date.now();
+      this._send({
+        type: 'state',
+        paused: reading.paused,
+        position: positionKnown ? reading.position : expected,
+        rate: 1,
+        title: this.driver.label,
+      });
+      this.emit('drift', {
+        drift: positionKnown ? reading.position - expected : null,
+        blind: !positionKnown,
+        devicePaused: reading.paused,
+      });
+      return;
+    }
+    this._noteDeviceReading(reading);
+
+    if (!positionKnown) {
+      // Open loop: we can still follow play/pause, and report pause if we see it.
+      await this._mirrorTransport(reading);
+      if (pausedKnown) {
+        this._send({
+          type: 'tick',
+          position: expected,
+          paused: reading.paused,
+          title: this.driver.label,
+        });
+      }
       this.emit('drift', { drift: null, blind: true });
       return;
     }
@@ -189,18 +226,51 @@ class Agent extends EventEmitter {
     await this._execute(plan, drift);
   }
 
+  _shouldPublishTransport(reading) {
+    if (!reading || typeof reading.paused !== 'boolean') return false;
+    if (Date.now() < (this._commandUntil || 0)) return false;
+    if (!this._deviceStable) return false;
+    return reading.paused !== this._assumedPaused;
+  }
+
+  _noteDeviceReading(reading) {
+    if (!reading || typeof reading.paused !== 'boolean') return;
+    if (Date.now() < (this._commandUntil || 0)) {
+      this._deviceStable = false;
+      this._stableSince = 0;
+      return;
+    }
+    if (reading.paused === this._assumedPaused) {
+      if (!this._stableSince) this._stableSince = Date.now();
+      this._deviceStable = Date.now() - this._stableSince >= 700;
+    } else {
+      this._stableSince = 0;
+    }
+  }
+
+  _markCommanded(paused) {
+    this._assumedPaused = paused;
+    this._commandUntil = Date.now() + 1500;
+    this._deviceStable = false;
+    this._stableSince = 0;
+  }
+
   async _mirrorTransport(reading) {
     const state = reading || (await this.driver.position());
-    if (!state) {
+    if (!state || typeof state.paused !== 'boolean') {
       // Blind: assume the device follows whatever we last told it.
       if (this.state.paused !== this._assumedPaused) {
-        this._assumedPaused = this.state.paused;
+        this._markCommanded(this.state.paused);
         await (this.state.paused ? this.driver.pause() : this.driver.play());
       }
       return;
     }
-    if (this.state.paused && !state.paused) await this.driver.pause();
-    else if (!this.state.paused && state.paused) await this.driver.resume();
+    if (this.state.paused === state.paused) {
+      this._assumedPaused = state.paused;
+      return;
+    }
+    this._markCommanded(this.state.paused);
+    await (this.state.paused ? this.driver.pause(state) : this.driver.resume(state));
   }
 
   /**
