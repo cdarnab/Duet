@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Duet — watch together",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Keeps your video player in step with someone else's, on any site.",
   "permissions": ["storage", "scripting", "cookies"],
   "host_permissions": ["<all_urls>"],

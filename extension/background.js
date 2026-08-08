@@ -29,6 +29,8 @@ chrome.storage.local.get(['duetConfig']).then((res) => {
 });
 
 let authRequired = false;
+let connectGen = 0;
+let reconnectTimer = 0;
 
 function socketUrl() {
   const base = config.server.replace(/\/+$/, '');
@@ -37,8 +39,11 @@ function socketUrl() {
 
 async function sessionToken() {
   try {
-    const cookie = await chrome.cookies.get({ url: config.server, name: 'duet_session' });
-    return cookie?.value || '';
+    const url = config.server.replace(/\/+$/, '') + '/';
+    const cookie = await chrome.cookies.get({ url, name: 'duet_session' });
+    if (cookie?.value) return cookie.value;
+    const all = await chrome.cookies.getAll({ domain: new URL(url).hostname, name: 'duet_session' });
+    return all?.[0]?.value || '';
   } catch {
     return '';
   }
@@ -63,26 +68,34 @@ function pingTabs(msg) {
 }
 
 function connect() {
+  const gen = ++connectGen;
+  clearTimeout(reconnectTimer);
   if (socket) {
-    try { socket.close(); } catch {}
+    const previous = socket;
+    socket = null;
+    try { previous.close(); } catch {}
   }
-  if (!config.room) return;
+  if (!config.room || authRequired) return;
 
-  socket = new WebSocket(socketUrl());
+  const next = new WebSocket(socketUrl());
+  socket = next;
 
-  socket.onopen = async () => {
+  next.onopen = async () => {
+    if (gen !== connectGen || socket !== next) return;
     const session = await sessionToken();
+    if (gen !== connectGen || socket !== next) return;
     send({ type: 'hello', room: config.room, name: config.name, surface: 'browser', session });
     beat();
   };
 
-  socket.onmessage = (ev) => {
+  next.onmessage = (ev) => {
+    if (gen !== connectGen || socket !== next) return;
     const msg = JSON.parse(ev.data);
     if (msg.type === 'error' && msg.error === 'auth_required') {
       authRequired = true;
       connected = false;
       fanout({ type: 'status', connected: false, room: config.room, authRequired: true });
-      try { socket.close(); } catch {}
+      try { next.close(); } catch {}
       return;
     }
     if (msg.type === 'pong') {
@@ -101,14 +114,18 @@ function connect() {
     fanout({ ...msg, selfId, offset: clock.offset });
   };
 
-  socket.onclose = () => {
+  next.onclose = () => {
+    if (gen !== connectGen || socket !== next) return;
+    socket = null;
     connected = false;
-    fanout({ type: 'status', connected: false, room: config.room });
-    if (config.room) setTimeout(connect, 2000);
+    fanout({ type: 'status', connected: false, room: config.room, authRequired });
+    if (!config.room || authRequired) return;
+    reconnectTimer = setTimeout(connect, 2000);
   };
 
-  socket.onerror = () => {
-    try { socket.close(); } catch {}
+  next.onerror = () => {
+    if (gen !== connectGen || socket !== next) return;
+    try { next.close(); } catch {}
   };
 }
 
@@ -157,6 +174,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === 'setConfig') {
     config = { ...config, ...msg.config };
     chrome.storage.local.set({ duetConfig: config });
+    authRequired = false;
     connect();
     reply({ ok: true, config });
     return true;
@@ -164,9 +182,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === 'leave') {
     config.room = '';
     chrome.storage.local.set({ duetConfig: config });
+    connectGen += 1;
+    clearTimeout(reconnectTimer);
     try { socket?.close(); } catch {}
     socket = null;
     connected = false;
+    authRequired = false;
     fanout({ type: 'status', connected: false, room: '' });
     reply({ ok: true });
     return true;
