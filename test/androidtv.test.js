@@ -2,7 +2,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseMediaSession, parseAudioPlayback, parseAdbDevices, pickAdbSerial } = require('../agent/drivers/androidtv');
+const {
+  parseMediaSession,
+  parseAudioPlayback,
+  parseAdbDevices,
+  pickAdbSerial,
+  waitForAdbAuthorized,
+} = require('../agent/drivers/androidtv');
 
 const DUMP = `
 Sessions Stack - have 2 sessions:
@@ -29,6 +35,40 @@ adb-D2426F3123270432-tz6ENw._adb-tls-connect._tcp	device product:d2426 model:D24
   assert.strictEqual(
     pickAdbSerial(devices, { prefer: 'firetv' }),
     '192.168.1.60:5555'
+  );
+});
+
+test('waitForAdbAuthorized waits until the TV is allowed', async () => {
+  let n = 0;
+  const serial = await waitForAdbAuthorized('192.168.1.146:5555', {
+    listDevices: async () => {
+      n += 1;
+      return [
+        {
+          serial: '192.168.1.146:5555',
+          status: n < 3 ? 'unauthorized' : 'device',
+          extra: '',
+        },
+      ];
+    },
+    sleep: async () => {},
+    timeoutMs: 10_000,
+    intervalMs: 1,
+  });
+  assert.strictEqual(serial, '192.168.1.146:5555');
+  assert.ok(n >= 3);
+});
+
+test('waitForAdbAuthorized times out with a Fire TV hint', async () => {
+  await assert.rejects(
+    () =>
+      waitForAdbAuthorized('192.168.1.146:5555', {
+        listDevices: async () => [{ serial: '192.168.1.146:5555', status: 'unauthorized', extra: '' }],
+        sleep: async () => {},
+        timeoutMs: 5,
+        intervalMs: 1,
+      }),
+    /Always allow/
   );
 });
 

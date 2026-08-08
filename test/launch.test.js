@@ -193,6 +193,33 @@ test('firetv launch can adb-connect from a saved IP', async () => {
   assert.strictEqual(resolved.room, 'FIRE02');
 });
 
+test('firetv launch waits for Allow USB debugging', async () => {
+  let waited = '';
+  const resolved = await resolveDeviceLaunch(
+    { device: 'firetv' },
+    fakeStore({
+      email: 'host@example.com',
+      session: 'tok',
+      firetvHost: '192.168.1.146',
+    }),
+    {
+      kind: 'firetv',
+      canPrompt: () => false,
+      sessionValid: async () => true,
+      fetchMineRooms: async () => [{ code: 'FIRE03', members: 1, createdAt: 1 }],
+      listDevices: async () => [{ serial: '192.168.1.146:5555', status: 'unauthorized', extra: '' }],
+      adbConnect: async (host, port) => `${host}:${port || 5555}`,
+      waitForAdbAuthorized: async (serial) => {
+        waited = serial;
+        return serial;
+      },
+      log: () => {},
+    }
+  );
+  assert.strictEqual(waited, '192.168.1.146:5555');
+  assert.strictEqual(resolved.serial, '192.168.1.146:5555');
+});
+
 test('roku launch fails when none are on the Wi-Fi', async () => {
   await assert.rejects(
     () =>

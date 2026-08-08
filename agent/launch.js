@@ -272,6 +272,8 @@ async function resolveDeviceLaunch(args, store, io = {}) {
     }
   } else {
     const connectAdb = io.adbConnect;
+    const { waitForAdbAuthorized, matchAdbSerial, adbAuthHint } = require('./drivers/androidtv');
+    const waitAuth = io.waitForAdbAuthorized || waitForAdbAuthorized;
     const savedAdbHost = kind === 'firetv' ? config.firetvHost : kind === 'androidtv' ? config.androidtvHost : config.host;
     async function devicesOrThrow() {
       try {
@@ -282,6 +284,35 @@ async function resolveDeviceLaunch(args, store, io = {}) {
         }
         throw err;
       }
+    }
+
+    async function authorizeIfNeeded(serialHint, hostHint) {
+      const target = serialHint || (hostHint ? `${String(hostHint).split(':')[0]}:${port || 5555}` : '');
+      if (!target || !listDevices) return serialHint || target;
+      const devices = await devicesOrThrow();
+      const hit = matchAdbSerial(devices, target);
+      if (hit?.status === 'device') return hit.serial;
+      if (hit?.status === 'unauthorized' || hit?.status === 'offline' || hit?.status === 'connecting') {
+        log(
+          kind === 'firetv'
+            ? 'Look at the Fire TV: Allow USB debugging? Check Always allow from this computer, then OK.'
+            : 'Look at the TV: Allow USB debugging? Check Always allow from this computer, then OK.'
+        );
+        return waitAuth(hit.serial || target, {
+          listDevices: devicesOrThrow,
+          reconnect: connectAdb
+            ? () =>
+                connectAdb(
+                  hostHint || String(target).split(':')[0],
+                  Number(port || 5555),
+                  args.adb || 'adb'
+                )
+            : undefined,
+          log,
+          hint: adbAuthHint(kind),
+        });
+      }
+      return hit?.serial || serialHint || target;
     }
 
     if (!serial && !host && config.serial && listDevices) {
@@ -303,6 +334,12 @@ async function resolveDeviceLaunch(args, store, io = {}) {
       let devices = await devicesOrThrow();
       const { pickAdbSerial } = require('./drivers/androidtv');
       serial = pickAdbSerial(devices, { prefer: kind }) || '';
+      if (!serial) {
+        const pending = devices.find((d) => d.status === 'unauthorized' || d.status === 'connecting');
+        if (pending) {
+          serial = await authorizeIfNeeded(pending.serial, String(pending.serial).split(':')[0]);
+        }
+      }
       if (!serial && (kind === 'firetv' || kind === 'androidtv') && prompt()) {
         const ip = await ask(
           kind === 'firetv'
@@ -324,6 +361,9 @@ async function resolveDeviceLaunch(args, store, io = {}) {
       }
     }
     if (!serial && !host && savedAdbHost) host = savedAdbHost;
+    if (serial || host) {
+      serial = await authorizeIfNeeded(serial, host || String(serial).split(':')[0]);
+    }
     if (!serial && !host) {
       const hint =
         kind === 'firetv'

@@ -209,6 +209,8 @@ Netflix on the TV, extension on the MacBook, helper Mac on the TV’s Wi-Fi.
 
 1. On the Fire TV: Settings → **My Fire TV** → About (click 7 times) → Developer
    options → **ADB debugging** On → **ADB over network** On. Note the IP.
+   The first connect shows **Allow USB debugging?** on the TV — check
+   **Always allow from this computer**, then OK.
 2. Phone or laptop: create the Duet room.
 3. On a computer on that Wi-Fi:
 

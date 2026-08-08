@@ -62,6 +62,58 @@ async function adbConnect(host, port = 5555, adb = 'adb') {
   return serial;
 }
 
+function matchAdbSerial(devices, serial) {
+  const want = String(serial || '');
+  if (!want) return null;
+  const host = want.includes(':') ? want.split(':')[0] : want;
+  return (
+    (devices || []).find((d) => d.serial === want || d.serial === host || d.serial.startsWith(`${host}:`)) ||
+    null
+  );
+}
+
+function adbAuthHint(kind = 'firetv') {
+  if (kind === 'firetv') {
+    return 'Fire TV ADB is unauthorized. On the TV, tap Allow USB debugging (check Always allow from this computer), then run npm run firetv again.';
+  }
+  return 'ADB is unauthorized. On the TV, tap Allow USB debugging (Always allow), then try again.';
+}
+
+async function waitForAdbAuthorized(
+  serial,
+  {
+    listDevices,
+    reconnect,
+    log = () => {},
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    timeoutMs = 90_000,
+    intervalMs = 2000,
+    hint = adbAuthHint('firetv'),
+  } = {}
+) {
+  if (!listDevices) throw new Error(hint);
+  const deadline = Date.now() + timeoutMs;
+  let announced = false;
+  while (Date.now() < deadline) {
+    if (reconnect) {
+      try {
+        await reconnect();
+      } catch {
+        /* still unauthorized / offline */
+      }
+    }
+    const devices = await listDevices();
+    const hit = matchAdbSerial(devices, serial);
+    if (hit?.status === 'device') return hit.serial;
+    if (!announced) {
+      log('Waiting for you to tap Allow on the TV…');
+      announced = true;
+    }
+    await sleep(intervalMs);
+  }
+  throw new Error(hint);
+}
+
 /** Parse dumpsys media_session. Prefer a Netflix session when several exist. */
 function parseMediaSession(dump, prefer = /netflix/i) {
   if (!dump) return null;
@@ -144,8 +196,16 @@ class AndroidTvDriver {
     if (!this.skipConnect) {
       await run(this.adb, ['connect', this.serial], { timeout: 8000 });
     }
-    const { stdout } = await run(this.adb, ['-s', this.serial, 'shell', 'getprop', 'ro.product.model'], { timeout: 8000 });
-    this.label = stdout.trim() || this.serial;
+    try {
+      const { stdout } = await run(this.adb, ['-s', this.serial, 'shell', 'getprop', 'ro.product.model'], {
+        timeout: 8000,
+      });
+      this.label = stdout.trim() || this.serial;
+    } catch (err) {
+      const detail = `${err.stderr || ''} ${err.message || ''}`;
+      if (/unauthorized/i.test(detail)) throw new Error(adbAuthHint(this.name));
+      throw err;
+    }
 
     const t0 = Date.now();
     await this._shell('echo ping');
@@ -244,4 +304,7 @@ module.exports = {
   pickAdbSerial,
   listAdbDevices,
   adbConnect,
+  matchAdbSerial,
+  adbAuthHint,
+  waitForAdbAuthorized,
 };
