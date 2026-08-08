@@ -61,10 +61,14 @@ test('extension install assets are public', async () => {
   assert.match(await manifest.text(), /"manifest_version"/);
 });
 
-test('unauthenticated visitors are sent to login', async () => {
-  const res = await fetch(`${base()}/`, { redirect: 'manual' });
-  assert.strictEqual(res.status, 302);
-  assert.match(res.headers.get('location'), /^\/login(\?next=|$)/);
+test('the landing page is public but room surfaces require login', async () => {
+  const landing = await fetch(`${base()}/`, { redirect: 'manual' });
+  assert.strictEqual(landing.status, 200);
+  assert.match(await landing.text(), /Press play/);
+
+  const protectedPage = await fetch(`${base()}/companion.html`, { redirect: 'manual' });
+  assert.strictEqual(protectedPage.status, 302);
+  assert.match(protectedPage.headers.get('location'), /^\/login\?next=/);
 });
 
 test('room API requires a session', async () => {
