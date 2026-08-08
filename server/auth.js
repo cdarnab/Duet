@@ -61,6 +61,25 @@ function validPassword(password) {
   return typeof password === 'string' && password.length >= MIN_PASSWORD && password.length <= 200;
 }
 
+function normalizeName(value) {
+  return String(value || '')
+    .replace(/[\u0000-\u001F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 24);
+}
+
+function validName(value) {
+  const name = normalizeName(value);
+  return name.length >= 2 && /^[\p{L}\p{N} .'\-]+$/u.test(name);
+}
+
+function displayName(user) {
+  if (user && validName(user.name)) return normalizeName(user.name);
+  const fallback = String(user?.email || 'Guest').split('@')[0];
+  return fallback.slice(0, 24) || 'Guest';
+}
+
 function hashToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
@@ -254,8 +273,21 @@ async function handleHttp(req, res, url, { securityHeaders }) {
   if (pathname === '/api/me') {
     const session = sessionFromRequest(req);
     if (!session) return json(res, securityHeaders, 401, { error: 'auth_required' });
+    if (req.method === 'POST') {
+      if (!sameOrigin(req)) return json(res, securityHeaders, 403, { error: 'forbidden' });
+      const body = await readBody(req);
+      if (!validName(body.name)) return json(res, securityHeaders, 400, { error: 'invalid_name' });
+      session.user.name = normalizeName(body.name);
+      await persist();
+      return json(res, securityHeaders, 200, {
+        email: session.user.email,
+        name: displayName(session.user),
+        owner: isOwner(session.user),
+      });
+    }
     return json(res, securityHeaders, 200, {
       email: session.user.email,
+      name: displayName(session.user),
       owner: isOwner(session.user),
     });
   }
@@ -296,9 +328,11 @@ async function handleHttp(req, res, url, { securityHeaders }) {
       return json(res, securityHeaders, 401, { error: 'invalid_setup' });
     }
     if (!validPassword(body.password)) return json(res, securityHeaders, 400, { error: 'weak_password' });
+    const ownerName = validName(body.name) ? normalizeName(body.name) : displayName({ email: OWNER_EMAIL });
     store.users.push({
       id: crypto.randomUUID(),
       email: OWNER_EMAIL,
+      name: ownerName,
       passwordHash: await hashPassword(body.password),
       role: 'owner',
       createdAt: Date.now(),
@@ -316,6 +350,7 @@ async function handleHttp(req, res, url, { securityHeaders }) {
     }
     const body = await readBody(req);
     if (!validPassword(body.password)) return json(res, securityHeaders, 400, { error: 'weak_password' });
+    if (!validName(body.name)) return json(res, securityHeaders, 400, { error: 'invalid_name' });
     pruneSessions();
     store.invites = store.invites.filter((invite) => !invite.usedAt && invite.expiresAt > Date.now());
     const invite = store.invites.find((row) => row.hash === hashToken(inviteMatch[1]));
@@ -324,6 +359,7 @@ async function handleHttp(req, res, url, { securityHeaders }) {
     const user = {
       id: crypto.randomUUID(),
       email: invite.email,
+      name: normalizeName(body.name),
       passwordHash: await hashPassword(body.password),
       role: 'member',
       createdAt: Date.now(),
@@ -346,7 +382,7 @@ async function handleHttp(req, res, url, { securityHeaders }) {
       pruneSessions();
       store.invites = store.invites.filter((invite) => invite.expiresAt > Date.now());
       return json(res, securityHeaders, 200, {
-        users: store.users.map((user) => ({ email: user.email, role: user.role })),
+        users: store.users.map((user) => ({ email: user.email, name: displayName(user), role: user.role })),
         invites: store.invites
           .filter((invite) => !invite.usedAt)
           .map((invite) => ({ email: invite.email, expiresAt: invite.expiresAt })),
@@ -387,5 +423,6 @@ module.exports = {
   handleHttp,
   sessionFromRequest,
   sessionFromHello,
+  displayName,
   load,
 };

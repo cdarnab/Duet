@@ -30,6 +30,14 @@
     </ol>
   </div>
 
+  <div class="card" id="profile" style="display:none">
+    <h2 style="margin-top:0">Your name</h2>
+    <p class="small">This is how you show up in the room and in chat.</p>
+    <input id="display-name" type="text" minlength="2" maxlength="24" autocomplete="nickname" />
+    <button class="btn" id="save-name" style="margin-top:10px">Save name</button>
+    <p class="small" id="name-status" style="margin:10px 0 0"></p>
+  </div>
+
   <div class="card">
     <h2 style="margin-top:0">Start a room</h2>
     <div class="row">
@@ -104,9 +112,12 @@
     const who = document.getElementById('who');
     who.style.display = 'block';
     who.innerHTML = '';
-    const email = document.createElement('span');
-    email.textContent = me.email;
-    who.appendChild(email);
+    const label = document.createElement('span');
+    label.textContent = me.name ? `${me.name} · ${me.email}` : me.email;
+    who.appendChild(label);
+    const profile = document.getElementById('profile');
+    profile.style.display = 'block';
+    document.getElementById('display-name').value = me.name || '';
     if (me.owner) {
       who.appendChild(document.createTextNode(' · '));
       const admin = document.createElement('a');
@@ -124,6 +135,24 @@
     });
     who.appendChild(logout);
   }).catch(() => {});
+
+  document.getElementById('save-name').addEventListener('click', async () => {
+    const status = document.getElementById('name-status');
+    status.textContent = '';
+    const res = await fetch('/api/me', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: document.getElementById('display-name').value }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      status.textContent = 'Use 2–24 letters or numbers.';
+      return;
+    }
+    status.textContent = 'Saved.';
+    const who = document.getElementById('who');
+    if (who.firstChild) who.firstChild.textContent = `${body.name} · ${body.email}`;
+  });
 
   fetch('/version.json')
     .then((r) => r.json())

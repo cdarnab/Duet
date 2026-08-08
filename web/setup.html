@@ -14,6 +14,8 @@
   <form class="card" id="form">
     <label class="small" for="token">Setup token</label>
     <input id="token" name="token" type="password" autocomplete="off" required />
+    <label class="small" for="name" style="display:block;margin-top:12px">Display name</label>
+    <input id="name" name="name" type="text" autocomplete="nickname" minlength="2" maxlength="24" placeholder="Optional" />
     <label class="small" for="password" style="display:block;margin-top:12px">Owner password</label>
     <input id="password" name="password" type="password" autocomplete="new-password" required minlength="12" />
     <button class="btn primary wide" style="margin-top:14px" type="submit">Save password</button>
@@ -32,6 +34,7 @@
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         token: document.getElementById('token').value,
+        name: document.getElementById('name').value,
         password: document.getElementById('password').value,
       }),
     });

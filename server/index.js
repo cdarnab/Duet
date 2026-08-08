@@ -168,6 +168,7 @@ wss.on('connection', (socket, req) => {
             return;
           }
           member.email = session.user.email;
+          member.name = auth.displayName(session.user);
         }
         const code = normalizeRoomCode(msg.room);
         if (!validRoomCode(code)) {
@@ -179,7 +180,9 @@ wss.on('connection', (socket, req) => {
           send(socket, { type: 'error', error: 'invalid_room' });
           return;
         }
-        member.name = sanitizeText(msg.name || (member.email ? member.email.split('@')[0] : 'Guest'), 32) || 'Guest';
+        if (!member.name) {
+          member.name = sanitizeText(msg.name || (member.email ? member.email.split('@')[0] : 'Guest'), 32) || 'Guest';
+        }
         member.surface = sanitizeText(msg.surface || 'unknown', 16) || 'unknown';
         room.add(member);
         send(socket, {

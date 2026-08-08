@@ -91,10 +91,22 @@ test('owner setup, login, invite, and invited user can create a room', async () 
   const accept = await fetch(`${base()}${invited.url}`, {
     method: 'POST',
     headers: jsonHeaders(),
-    body: JSON.stringify({ password: 'another-strong-pw' }),
+    body: JSON.stringify({ name: 'Sam', password: 'another-strong-pw' }),
   });
   assert.strictEqual(accept.status, 200);
   takeCookie(accept);
+
+  const me = await fetch(`${base()}/api/me`, { headers: withCookie() });
+  assert.strictEqual(me.status, 200);
+  assert.strictEqual((await me.json()).name, 'Sam');
+
+  const renamed = await fetch(`${base()}/api/me`, {
+    method: 'POST',
+    headers: withCookie(),
+    body: JSON.stringify({ name: 'Samira' }),
+  });
+  assert.strictEqual(renamed.status, 200);
+  assert.strictEqual((await renamed.json()).name, 'Samira');
 
   const room = await fetch(`${base()}/api/room/new`, { headers: withCookie() });
   assert.strictEqual(room.status, 200);
