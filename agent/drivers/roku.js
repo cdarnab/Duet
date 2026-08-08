@@ -14,6 +14,19 @@
 
 const BASE_LATENCY_MS = 45;
 
+/** Parse /query/media-player. Netflix often has pause/play state but no playhead. */
+function parseRokuPlayer(xml) {
+  if (!xml) return null;
+  const state = /state="(\w+)"/.exec(String(xml))?.[1]?.toLowerCase();
+  if (!state) return null;
+  const pos = /<position>(\d+)\s*ms<\/position>/.exec(xml);
+  const paused = state === 'pause' || state === 'stop' || state === 'finished';
+  return {
+    paused,
+    position: pos ? Number(pos[1]) / 1000 : null,
+  };
+}
+
 class RokuDriver {
   constructor({ host, port = 8060, jumpBack = 10, jumpForward = 10 }) {
     this.name = 'roku';
@@ -21,7 +34,8 @@ class RokuDriver {
     this.port = port;
     this.base = `http://${host}:${port}`;
     this.capabilities = {
-      readPosition: false, // upgraded during connect() if the channel reports one
+      readPosition: false, // upgraded during connect() if the channel reports a playhead
+      readPaused: false,
       canJump: true,
       jumpBack,
       jumpForward,
@@ -42,7 +56,8 @@ class RokuDriver {
     this.capabilities.commandLatencyMs = Math.round((Date.now() - t0) / 2);
 
     const probe = await this.position();
-    this.capabilities.readPosition = probe !== null;
+    this.capabilities.readPosition = Boolean(probe && Number.isFinite(probe.position));
+    this.capabilities.readPaused = Boolean(probe && typeof probe.paused === 'boolean');
     return this;
   }
 
@@ -76,10 +91,7 @@ class RokuDriver {
   async position() {
     try {
       const xml = await this._get('/query/media-player');
-      const pos = /<position>(\d+)\s*ms<\/position>/.exec(xml);
-      const state = /state="(\w+)"/.exec(xml)?.[1];
-      if (!pos) return null;
-      return { position: Number(pos[1]) / 1000, paused: state === 'pause' };
+      return parseRokuPlayer(xml);
     } catch {
       return null;
     }
@@ -99,4 +111,4 @@ class RokuDriver {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-module.exports = { RokuDriver };
+module.exports = { RokuDriver, parseRokuPlayer };

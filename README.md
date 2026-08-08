@@ -176,28 +176,29 @@ keys on the remote shift the room timecode; OK starts a countdown.
 
 **Roku at your house + partner on a MacBook (Netflix).** Casting will not work.
 Use the native Netflix app on the Roku and the extension on the MacBook, same
-room, same title.
+room, same title. Create the room on your phone if you want; the TV helper only
+needs to be on the same Wi-Fi as the Roku.
 
-1. Partner: Chrome + Duet extension, log in, create or join the room, open Netflix.
-2. You: on a computer that is on the **same Wi-Fi as the Roku** (a laptop, Pi, etc.):
+1. You or your partner: log in at duet.arnabbanik.com (phone is fine) and **Create a room**.
+2. Partner: Chrome + Duet extension, join that room, open the same Netflix title.
+3. On a computer on the **same Wi-Fi as the Roku** (this Mac, a Pi, etc.):
 
 ```bash
 cd /path/to/duet
-npm install
-node agent --discover
-node agent --room YOURCODE --device roku --host ROKU_IP \
-  --server https://duet.arnabbanik.com \
-  --email you@example.com --password 'your-password'
+npm run roku:login          # once — same Keychain login as Capsule
+npm run roku                # or double-click scripts/duet-roku.command
 ```
 
-3. On the Roku, open Netflix and the same movie/episode. Pause it.
-4. Partner clicks **Count us in** in the Duet popup. The agent presses play on the
-   Roku at the same beat.
+It finds the Roku, joins *your* room if you created it, otherwise asks for the code.
+4. On the Roku, open Netflix and the same movie/episode. Pause it.
+5. Partner clicks **Count us in**. The agent presses play on the Roku at the same beat.
 
-Netflix on Roku does not report a playhead, so Duet can keep play/pause and the
-countdown in sync automatically, but it cannot measure drift. If you separate, use
-**Resync** / **Count us in** again, or skip on the Roku remote. The agent must keep
-running for the whole movie.
+Two Rokus (two houses): each house runs `npm run roku` on a computer on that TV’s
+Wi-Fi, same room code. Still open the same title on both Netflix apps.
+
+Netflix on Roku usually has pause/play state but no playhead, so countdown and
+transport stay in sync; drift is not auto-corrected. **Resync** pauses both and
+counts in again. Leave the agent window open for the movie.
 
 If you have no extra computer next to the Roku, skip the agent: open
 `https://duet.arnabbanik.com/tv.html#YOURCODE` on your phone and follow the cue

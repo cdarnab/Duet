@@ -8,9 +8,10 @@
  *   node agent/index.js --room ABCDEF --device roku --host 192.168.1.42 \\
  *     --server https://duet.arnabbanik.com
  *
- * Capsule from this laptop (login once, then double-click or npm run capsule):
+ * TV from this laptop (login once, then double-click or npm run capsule / roku):
  *
  *   node agent/index.js --device nebula
+ *   node agent/index.js --device roku
  */
 
 const { Agent } = require('./agent');
@@ -20,7 +21,7 @@ const store = require('./store');
 const {
   DEFAULT_SERVER,
   loginSession,
-  resolveCapsuleLaunch,
+  resolveDeviceLaunch,
 } = require('./launch');
 const { listAdbDevices } = require('./drivers/androidtv');
 
@@ -134,6 +135,7 @@ async function startAgent({ server, room, driver, name, session, pollMs }) {
 async function main() {
   const args = parseArgs(process.argv);
   if (args.capsule && !args.device) args.device = 'nebula';
+  if (args.roku && !args.device) args.device = 'roku';
 
   if (args.logout) {
     const cfg = store.loadConfig();
@@ -155,14 +157,18 @@ async function main() {
     return;
   }
 
-  if (args.device === 'nebula' || args.login) {
-    const resolved = await resolveCapsuleLaunch(args, store, { listDevices: listAdbDevices });
+  if (args.device === 'nebula' || args.device === 'roku' || args.login) {
+    const resolved = await resolveDeviceLaunch(args, store, {
+      kind: args.device === 'roku' ? 'roku' : 'nebula',
+      listDevices: listAdbDevices,
+      discoverRoku,
+    });
     if (resolved.onlyLogin) {
-      console.log(`Ready. Next time just run npm run capsule (or double-click scripts/duet-capsule.command).`);
+      console.log('Ready. Next time run npm run capsule or npm run roku.');
       return;
     }
     const driver = await buildDriver({
-      device: 'nebula',
+      device: resolved.device || 'nebula',
       host: resolved.host,
       port: resolved.port,
       serial: resolved.serial,
