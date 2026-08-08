@@ -23,9 +23,11 @@
   let netflixBridge = false;
   let banner = null;
 
+  let transportGen = 0;
+
   const serverNow = () => Date.now() + offset;
   const suppressed = () => Date.now() < suppressUntil;
-  const hold = (ms = 700) => (suppressUntil = Date.now() + ms);
+  const hold = (ms = 1200) => (suppressUntil = Date.now() + ms);
 
   /* --------------------------------------------------------- find a video */
 
@@ -116,7 +118,8 @@
 
   function setPaused(paused) {
     if (!video) return;
-    hold(1200);
+    hold(1500);
+    const gen = ++transportGen;
     if (netflixBridge) {
       window.postMessage({ source: 'duet', cmd: paused ? 'pause' : 'play' }, '*');
       return;
@@ -134,13 +137,13 @@
       }
     }
     setTimeout(() => {
-      if (!video || !connectedRoom) return;
+      if (gen !== transportGen || !video || !connectedRoom || suppressed()) return;
       if (Boolean(video.paused) !== Boolean(paused)) clickTransport(paused);
     }, 280);
   }
 
   function applyRoomState() {
-    if (!video || !connectedRoom || state.seq < 0) return;
+    if (!video || !connectedRoom || state.seq < 0 || suppressed()) return;
     setPaused(state.paused);
     const target = DuetSync.projected(state, serverNow());
     if (Math.abs(video.currentTime - target) > DuetSync.constants.HARD_SEEK) seekTo(target);
@@ -149,8 +152,23 @@
   /* ------------------------------------------------------ local -> server */
 
   function onLocalEvent(ev) {
-    if (suppressed() || !video) return;
-    if (ev.type === 'ratechange' && Math.abs(video.playbackRate - 1) < 0.1) return; // our own trim
+    if (!video) return;
+    if (ev.type === 'ratechange' && Math.abs(video.playbackRate - 1) < 0.1) return;
+    // User play/pause must win immediately. Otherwise the correction loop still
+    // has the old room state and unpauses (or pauses) the click we just made.
+    if (ev.type === 'play' || ev.type === 'pause') {
+      hold(1500);
+      state = {
+        ...state,
+        paused: video.paused,
+        position: video.currentTime,
+        atServerTime: serverNow(),
+        seq: Math.max(state.seq, 0),
+      };
+      push();
+      return;
+    }
+    if (suppressed()) return;
     push();
   }
 
@@ -168,7 +186,7 @@
   /* ------------------------------------------------------ server -> local */
 
   function correct() {
-    if (!video || !connectedRoom || state.seq < 0) return;
+    if (!video || !connectedRoom || state.seq < 0 || suppressed()) return;
 
     const c = DuetSync.correction({
       state,

@@ -35,14 +35,11 @@
 </style>
 </head>
 <body>
-  <p class="eyebrow">Duet · 1.2.0</p>
+  <p class="eyebrow">Duet · 1.4.0</p>
   <h1>Watch together</h1>
 
-  <label for="server">Server</label>
-  <input id="server" type="text" placeholder="https://duet.arnabbanik.com" />
-
   <label for="room">Room code</label>
-  <input id="room" type="text" placeholder="ABCDEF" maxlength="6" autocapitalize="characters" />
+  <input id="room" type="text" placeholder="6-letter code" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
 
   <button class="primary" id="join">Join room</button>
   <button id="cue">Count us in</button>
@@ -52,6 +49,7 @@
   <div class="status"><span class="dot" id="dot"></span><span id="status-text">Not connected</span></div>
   <div class="readout" id="readout"></div>
   <p><a href="#" id="console-link" target="_blank">Open the console for voice and chat</a></p>
+  <p id="login-wrap" style="display:none"><a id="login-link" href="https://duet.arnabbanik.com/login" target="_blank">Log in on Duet first</a></p>
 
   <script src="defaults.js"></script>
   <script src="popup.js"></script>

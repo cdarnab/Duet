@@ -6,7 +6,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
-const { RoomStore, Member } = require('./rooms');
+const { RoomStore, Member, validRoomCode, normalizeRoomCode } = require('./rooms');
+const auth = require('./auth');
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -41,36 +42,81 @@ function resolveStatic(urlPath) {
   return full;
 }
 
-const server = http.createServer((req, res) => {
-  if (req.url === '/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
+function securityHeaders(extra = {}) {
+  return {
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'same-origin',
+    'permissions-policy': 'camera=(), microphone=(self), geolocation=()',
+    'content-security-policy':
+      "default-src 'self'; img-src 'self' data:; media-src 'self' blob: https:; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    ...extra,
+  };
+}
+
+function sanitizeText(value, max) {
+  return String(value || '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .slice(0, max);
+}
+
+function isPublicAsset(pathname) {
+  return pathname === '/app.css' || pathname === '/favicon.ico';
+}
+
+async function handleRequest(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (url.pathname === '/health') {
+    res.writeHead(200, securityHeaders({ 'content-type': 'application/json' }));
     return res.end(JSON.stringify({ ok: true, rooms: store.rooms.size, uptime: process.uptime() }));
   }
 
-  if (req.url.startsWith('/api/room/new')) {
+  if (await auth.handleHttp(req, res, url, { securityHeaders })) return;
+
+  if (auth.enabled() && !auth.sessionFromRequest(req) && !isPublicAsset(url.pathname)) {
+    if (url.pathname.startsWith('/api/')) {
+      res.writeHead(401, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+      return res.end(JSON.stringify({ error: 'auth_required' }));
+    }
+    res.writeHead(302, securityHeaders({ location: '/login' }));
+    return res.end();
+  }
+
+  if (url.pathname.startsWith('/api/room/new')) {
     const room = store.create();
-    res.writeHead(200, { 'content-type': 'application/json' });
+    res.writeHead(200, securityHeaders({ 'content-type': 'application/json' }));
     return res.end(JSON.stringify({ code: room.code }));
   }
 
-  let file = resolveStatic(req.url);
+  let file = resolveStatic(url.pathname);
   if (!file) {
-    res.writeHead(403);
+    res.writeHead(403, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
     return res.end('Forbidden');
   }
   if (!fs.existsSync(file) && !path.extname(file)) file += '.html';
 
   fs.readFile(file, (err, buf) => {
     if (err) {
-      res.writeHead(404, { 'content-type': 'text/plain' });
+      res.writeHead(404, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
       return res.end('Not found');
     }
-    const headers = { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' };
+    const headers = securityHeaders({ 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
     if (path.extname(file) === '.zip') {
       headers['content-disposition'] = `attachment; filename="${path.basename(file)}"`;
     }
     res.writeHead(200, headers);
     res.end(buf);
+  });
+}
+
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((err) => {
+    console.error(err);
+    if (!res.headersSent) {
+      res.writeHead(500, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
+      res.end('Server error');
+    }
   });
 });
 
@@ -89,7 +135,7 @@ function broadcast(room, msg, exceptId) {
   }
 }
 
-wss.on('connection', (socket) => {
+wss.on('connection', (socket, req) => {
   const member = new Member(crypto.randomUUID(), socket);
   let room = null;
 
@@ -114,9 +160,30 @@ wss.on('connection', (socket) => {
         return send(socket, { type: 'pong', t0: msg.t0, t1: Date.now() });
 
       case 'hello': {
-        room = store.ensure(msg.room);
-        member.name = String(msg.name || 'Guest').slice(0, 32);
-        member.surface = String(msg.surface || 'unknown').slice(0, 16);
+        if (auth.enabled()) {
+          const session = auth.sessionFromHello(req, msg.session);
+          if (!session) {
+            send(socket, { type: 'error', error: 'auth_required' });
+            socket.close();
+            return;
+          }
+          member.email = session.user.email;
+          member.name = auth.displayName(session.user);
+        }
+        const code = normalizeRoomCode(msg.room);
+        if (!validRoomCode(code)) {
+          send(socket, { type: 'error', error: 'invalid_room' });
+          return;
+        }
+        room = store.ensure(code);
+        if (!room) {
+          send(socket, { type: 'error', error: 'invalid_room' });
+          return;
+        }
+        if (!member.name) {
+          member.name = sanitizeText(msg.name || (member.email ? member.email.split('@')[0] : 'Guest'), 32) || 'Guest';
+        }
+        member.surface = sanitizeText(msg.surface || 'unknown', 16) || 'unknown';
         room.add(member);
         send(socket, {
           type: 'welcome',
@@ -162,7 +229,7 @@ wss.on('connection', (socket) => {
         if (!room) return;
         member.position = Number(msg.position) || 0;
         member.paused = Boolean(msg.paused);
-        member.title = msg.title ? String(msg.title).slice(0, 120) : member.title;
+        member.title = msg.title ? sanitizeText(msg.title, 120) : member.title;
         broadcast(room, { type: 'tick', id: member.id, position: member.position, paused: member.paused, title: member.title }, member.id);
         return;
       }
@@ -173,7 +240,7 @@ wss.on('connection', (socket) => {
           id: crypto.randomUUID(),
           from: member.id,
           name: member.name,
-          text: String(msg.text || '').slice(0, 500),
+          text: sanitizeText(msg.text, 500),
           at: Date.now(),
         });
         broadcast(room, { type: 'chat', entry });
@@ -231,8 +298,12 @@ function start() {
 }
 
 if (require.main === module) {
+  if (process.env.DUET_AUTH === 'on' && !auth.enabled()) {
+    console.error('DUET_AUTH=on requires DUET_OWNER_EMAIL');
+    process.exit(1);
+  }
   start().then(() => {
-    console.log(`Duet listening on http://${HOST}:${PORT}`);
+    console.log(`Duet listening on http://${HOST}:${PORT}${auth.enabled() ? ' (invite-only auth on)' : ''}`);
   });
 }
 

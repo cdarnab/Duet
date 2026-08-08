@@ -75,6 +75,16 @@ test('directory traversal is refused', async () => {
   assert.ok(res.status === 403 || res.status === 404);
 });
 
+test('an invalid room code is rejected', async () => {
+  await ensureServer();
+  const c = connect();
+  await c.open();
+  c.send({ type: 'hello', room: '../..', name: 'Nope', surface: 'browser' });
+  const err = await c.next((m) => m.type === 'error');
+  assert.strictEqual(err.error, 'invalid_room');
+  c.close();
+});
+
 test('a new room gets a readable code', async () => {
   await ensureServer();
   const { code } = await (await fetch(`http://127.0.0.1:${PORT}/api/room/new`)).json();

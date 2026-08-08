@@ -1,5 +1,6 @@
 node_modules/
 .DS_Store
 *.zip
+data/
 # Unpacked zip extract / old copy — load extension/ instead
 duet-extension/

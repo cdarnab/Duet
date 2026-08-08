@@ -8,25 +8,34 @@
 </head>
 <body>
 <main class="wrap">
+  <p class="eyebrow" id="who" style="display:none"></p>
   <p class="eyebrow">Two rooms · One reel</p>
   <h1>Press play <em>together</em>.</h1>
   <p class="lede">Duet keeps two players on the same frame, down to a tenth of a second, on whatever you're already watching. You each stream from your own account. Duet only carries the timing.</p>
 
   <div class="card">
-    <p class="eyebrow">Browser extension · <span id="ext-version">v1.2.0</span></p>
+    <p class="eyebrow">Browser extension · <span id="ext-version">v1.4.0</span></p>
     <h2 style="margin-top:6px">Get the extension</h2>
-    <p>Both people install this in Chrome, Edge, Brave, or Arc. Then set the server to this site and join the same room code.</p>
+    <p>Both people install this in Chrome, Edge, Brave, or Arc, then join the same room code.</p>
     <div class="row">
-      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.2.0</a>
+      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.4.0</a>
     </div>
-    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.2.0</span></strong> and the server should already be <code>https://duet.arnabbanik.com</code>.</p>
+    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.4.0</span></strong>.</p>
     <ol class="small" style="margin-bottom:0; padding-left:1.2em">
       <li>Unzip the download</li>
       <li>Open <code>chrome://extensions</code></li>
       <li>Turn on <strong>Developer mode</strong></li>
       <li>Remove any older Duet, then <strong>Load unpacked</strong> → select the unzipped folder</li>
-      <li>In the Duet popup, set Server to this website’s URL and enter the room code</li>
+      <li>In the Duet popup, enter the room code and join</li>
     </ol>
+  </div>
+
+  <div class="card" id="profile" style="display:none">
+    <h2 style="margin-top:0">Your name</h2>
+    <p class="small">This is how you show up in the room and in chat.</p>
+    <input id="display-name" type="text" minlength="2" maxlength="24" autocomplete="nickname" />
+    <button class="btn" id="save-name" style="margin-top:10px">Save name</button>
+    <p class="small" id="name-status" style="margin:10px 0 0"></p>
   </div>
 
   <div class="card">
@@ -39,7 +48,7 @@
 
   <div class="card">
     <h2 style="margin-top:0">Join a room</h2>
-    <input type="text" id="code" placeholder="ABCDEF" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+    <input type="text" id="code" placeholder="6-letter code" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
     <div class="row" style="margin-top:10px">
       <button class="btn" id="join-companion">Open console</button>
       <button class="btn" id="join-tv">Open on TV</button>
@@ -69,12 +78,18 @@
 
 <script>
   const codeInput = document.getElementById('code');
+  const sanitizeRoom = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   codeInput.addEventListener('input', () => {
-    codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    codeInput.value = sanitizeRoom(codeInput.value);
+  });
+  codeInput.addEventListener('paste', (event) => {
+    event.preventDefault();
+    codeInput.value = sanitizeRoom((event.clipboardData || window.clipboardData).getData('text'));
   });
 
   document.getElementById('create').addEventListener('click', async () => {
     const res = await fetch('/api/room/new');
+    if (res.status === 401) { location.href = '/login'; return; }
     const { code } = await res.json();
     location.href = `/companion.html#${code}`;
   });
@@ -90,6 +105,54 @@
   };
   document.getElementById('join-companion').addEventListener('click', go('companion.html'));
   document.getElementById('join-tv').addEventListener('click', go('tv.html'));
+
+  fetch('/api/me').then(async (res) => {
+    if (!res.ok) return;
+    const me = await res.json();
+    const who = document.getElementById('who');
+    who.style.display = 'block';
+    who.innerHTML = '';
+    const label = document.createElement('span');
+    label.textContent = me.name ? `${me.name} · ${me.email}` : me.email;
+    who.appendChild(label);
+    const profile = document.getElementById('profile');
+    profile.style.display = 'block';
+    document.getElementById('display-name').value = me.name || '';
+    if (me.owner) {
+      who.appendChild(document.createTextNode(' · '));
+      const admin = document.createElement('a');
+      admin.href = '/admin';
+      admin.textContent = 'Invite';
+      who.appendChild(admin);
+    }
+    who.appendChild(document.createTextNode(' · '));
+    const logout = document.createElement('a');
+    logout.href = '#';
+    logout.textContent = 'Log out';
+    logout.addEventListener('click', (event) => {
+      event.preventDefault();
+      fetch('/logout', { method: 'POST' }).finally(() => { location.href = '/login'; });
+    });
+    who.appendChild(logout);
+  }).catch(() => {});
+
+  document.getElementById('save-name').addEventListener('click', async () => {
+    const status = document.getElementById('name-status');
+    status.textContent = '';
+    const res = await fetch('/api/me', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: document.getElementById('display-name').value }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      status.textContent = 'Use 2–24 letters or numbers.';
+      return;
+    }
+    status.textContent = 'Saved.';
+    const who = document.getElementById('who');
+    if (who.firstChild) who.firstChild.textContent = `${body.name} · ${body.email}`;
+  });
 
   fetch('/version.json')
     .then((r) => r.json())

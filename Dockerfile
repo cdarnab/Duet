@@ -15,6 +15,8 @@ RUN apk add --no-cache zip \
   && node scripts/build-extension.js \
   && cp /app/duet-extension.zip /app/web/duet-extension.zip
 
+RUN mkdir -p /app/data && chown node:node /app/data
+
 ENV PORT=8080 HOST=0.0.0.0
 EXPOSE 8080
 

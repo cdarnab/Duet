@@ -28,9 +28,20 @@ chrome.storage.local.get(['duetConfig']).then((res) => {
   if (config.room) connect();
 });
 
+let authRequired = false;
+
 function socketUrl() {
   const base = config.server.replace(/\/+$/, '');
   return base.replace(/^http/, 'ws') + '/ws';
+}
+
+async function sessionToken() {
+  try {
+    const cookie = await chrome.cookies.get({ url: config.server, name: 'duet_session' });
+    return cookie?.value || '';
+  } catch {
+    return '';
+  }
 }
 
 function fanout(msg) {
@@ -59,23 +70,32 @@ function connect() {
 
   socket = new WebSocket(socketUrl());
 
-  socket.onopen = () => {
-    connected = true;
-    send({ type: 'hello', room: config.room, name: config.name, surface: 'browser' });
+  socket.onopen = async () => {
+    const session = await sessionToken();
+    send({ type: 'hello', room: config.room, name: config.name, surface: 'browser', session });
     beat();
-    fanout({ type: 'status', connected: true, room: config.room });
   };
 
   socket.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
+    if (msg.type === 'error' && msg.error === 'auth_required') {
+      authRequired = true;
+      connected = false;
+      fanout({ type: 'status', connected: false, room: config.room, authRequired: true });
+      try { socket.close(); } catch {}
+      return;
+    }
     if (msg.type === 'pong') {
       clock.addSample(msg.t0, msg.t1, Date.now());
       fanout({ type: 'clock', offset: clock.offset, rtt: clock.rtt, ready: clock.ready });
       return;
     }
     if (msg.type === 'welcome') {
+      authRequired = false;
+      connected = true;
       selfId = msg.selfId;
       roomState = msg.state;
+      fanout({ type: 'status', connected: true, room: config.room });
     }
     if (msg.type === 'state') roomState = msg.state;
     fanout({ ...msg, selfId, offset: clock.offset });
@@ -131,7 +151,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === 'getStatus') {
-    reply({ connected, config, selfId, state: roomState, offset: clock.offset, rtt: clock.rtt });
+    reply({ connected, config, selfId, state: roomState, offset: clock.offset, rtt: clock.rtt, authRequired });
     return true;
   }
   if (msg.type === 'setConfig') {

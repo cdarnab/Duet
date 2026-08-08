@@ -6,6 +6,11 @@ services:
       - "${PORT:-8080}:8080"
     environment:
       - PORT=8080
+      - DUET_AUTH=${DUET_AUTH:-on}
+      - DUET_OWNER_EMAIL=${DUET_OWNER_EMAIL:-}
+      - DUET_SETUP_TOKEN=${DUET_SETUP_TOKEN:-}
+    volumes:
+      - duet_data:/app/data
 
   # Streaming sites are HTTPS, so a browser there will only open a wss:// socket.
   # For anything beyond localhost you need TLS. Point DUET_DOMAIN at a hostname
@@ -29,3 +34,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  duet_data:
