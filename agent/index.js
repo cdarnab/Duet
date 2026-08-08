@@ -4,15 +4,32 @@
 /**
  * duet-agent — run this on any machine in the same house as the TV.
  *
- *   node agent/index.js --room ABCDEF --device roku --host 192.168.1.42
- *   node agent/index.js --room ABCDEF --device androidtv --host 192.168.1.50
- *   node agent/index.js --room ABCDEF --device appletv --id <ID> --credentials <CREDS>
  *   node agent/index.js --discover
+ *   node agent/index.js --room ABCDEF --device roku --host 192.168.1.42 \\
+ *     --server https://duet.arnabbanik.com --email you@example.com --password '…'
  */
 
 const { Agent } = require('./agent');
 const { discoverRoku } = require('./discover');
 const { timecode } = require('../shared/sync');
+
+async function loginSession(server, email, password) {
+  const base = String(server).replace(/\/+$/, '');
+  const res = await fetch(`${base}/login`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin: base,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+  if (res.status === 403) throw new Error('This account is disabled.');
+  if (!res.ok) throw new Error('Login failed. Check --email and --password.');
+  const header = res.headers.get('set-cookie') || '';
+  const match = /duet_session=([^;]+)/.exec(header);
+  if (!match) throw new Error('Login succeeded but no session cookie was returned.');
+  return decodeURIComponent(match[1]);
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -81,12 +98,21 @@ async function main() {
     process.exit(1);
   }
 
+  const server = args.server || process.env.DUET_SERVER || 'http://localhost:8080';
+  let session = args.session || process.env.DUET_SESSION || '';
+  const email = args.email || process.env.DUET_EMAIL || '';
+  const password = args.password || process.env.DUET_PASSWORD || '';
+  if (!session && email && password) {
+    session = await loginSession(server, email, password);
+  }
+
   const driver = await buildDriver(args);
   const agent = new Agent({
-    server: args.server || 'http://localhost:8080',
+    server,
     room: args.room,
     driver,
     name: args.name,
+    session,
   });
 
   agent.on('status', ({ connected }) =>
@@ -140,4 +166,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgs, buildDriver };
+module.exports = { parseArgs, buildDriver, loginSession };
