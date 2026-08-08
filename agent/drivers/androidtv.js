@@ -257,10 +257,13 @@ class AndroidTvDriver {
     this.capabilities = {
       readPosition: false,
       readPaused: this.flavor === 'firetv',
+      // Fire focus/wake-lock flicker would unpause the laptop if we published it.
+      publishPaused: this.flavor !== 'firetv',
       canJump: this.flavor !== 'firetv',
       jumpBack,
       jumpForward,
       commandLatencyMs: 120,
+      commandHoldMs: this.flavor === 'firetv' ? 4000 : 1500,
     };
   }
 
@@ -289,6 +292,8 @@ class AndroidTvDriver {
       this.capabilities.readPosition = false;
       this.capabilities.canJump = false;
       this.capabilities.readPaused = true;
+      this.capabilities.publishPaused = false;
+      this.capabilities.commandHoldMs = 4000;
       return this;
     }
 
@@ -348,21 +353,19 @@ class AndroidTvDriver {
   }
 
   /**
-   * Fire remote play/pause is KEYCODE_MEDIA_PLAY_PAUSE (85) only. Dedicated
-   * 126/127 and `media dispatch` either no-op or undo the toggle. First press
-   * often only shows the player chrome — if state does not change, press again.
+   * Fire remote play/pause is KEYCODE_MEDIA_PLAY_PAUSE (85) only. One press per
+   * command. A second press only if the TV clearly did not change — the first
+   * often just shows player chrome. Never a third: that is pause→play→pause.
    */
   async _fireSetPaused(wantPaused) {
     await this.ensureForeground();
-    let state = await this.position();
-    if (state && state.paused === wantPaused) return;
-    for (let i = 0; i < 3; i++) {
-      await this._key(KEY.playPause);
-      await sleep(450);
-      state = await this.position();
-      if (state && state.paused === wantPaused) return;
-      if (!state) return;
-    }
+    const before = await this.position();
+    if (before && before.paused === wantPaused) return;
+    await this._key(KEY.playPause);
+    await sleep(900);
+    const after = await this.position();
+    if (!after || after.paused === wantPaused) return;
+    await this._key(KEY.playPause);
   }
 
   async jump(dir, times = 1) {

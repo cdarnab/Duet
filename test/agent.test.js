@@ -212,6 +212,43 @@ test('a TV pause in open loop still pauses the browser side', async () => {
   }
 });
 
+test('a Fire-style TV does not publish pause flicker back to the laptop', async () => {
+  await ensureServer();
+  const room = 'AGENTF';
+
+  const device = new MockDriver({ startPosition: 50, readPosition: false, readPaused: true, latencyMs: 40 });
+  device.capabilities.publishPaused = false;
+  device.capabilities.commandHoldMs = 4000;
+  const peer = browserPeer(room);
+  await sleep(300);
+
+  const agent = new Agent({ server: `http://127.0.0.1:${PORT}`, room, driver: device, pollMs: 400 });
+  await agent.start();
+  try {
+    peer.setState({ paused: false, position: 50 });
+    await sleep(1200);
+    assert.strictEqual(device.paused, false);
+
+    const bounced = [];
+    peer.ws.on('message', (raw) => {
+      const msg = JSON.parse(raw);
+      if (msg.type === 'state' && msg.state?.paused === false && msg.state?.updatedBy === agent.selfId) {
+        bounced.push(msg);
+      }
+    });
+
+    peer.setState({ paused: true, position: 55 });
+    await sleep(800);
+    device.paused = false;
+    await sleep(1500);
+    assert.strictEqual(bounced.length, 0, 'noisy TV pause must not unpause the laptop');
+    assert.strictEqual(agent.state.paused, true);
+  } finally {
+    agent.stop();
+    peer.ws.close();
+  }
+});
+
 test('resync pauses an open-loop TV and counts the room in', async () => {
   await ensureServer();
   const room = 'AGENTR';
