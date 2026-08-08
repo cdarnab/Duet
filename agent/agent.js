@@ -160,8 +160,8 @@ class Agent extends EventEmitter {
 
     if (this._shouldPublishTransport(reading)) {
       this._assumedPaused = reading.paused;
-      this._deviceStable = true;
-      this._stableSince = Date.now();
+      this._deviceStable = false;
+      this._stableSince = 0;
       this._send({
         type: 'state',
         paused: reading.paused,
@@ -246,12 +246,16 @@ class Agent extends EventEmitter {
       this._stableSince = 0;
       return;
     }
+    // Publish only after the TV has disagreed with us steadily — that is a
+    // remote press. Matching readings, or flicker, must not move the laptop.
     if (reading.paused === this._assumedPaused) {
-      if (!this._stableSince) this._stableSince = Date.now();
-      this._deviceStable = Date.now() - this._stableSince >= 700;
-    } else {
       this._stableSince = 0;
+      this._deviceStable = false;
+      return;
     }
+    if (!this._stableSince) this._stableSince = Date.now();
+    const need = this.driver.capabilities.publishStableMs || 700;
+    this._deviceStable = Date.now() - this._stableSince >= need;
   }
 
   _markCommanded(paused) {
@@ -283,21 +287,12 @@ class Agent extends EventEmitter {
   async _mirrorTransport(reading) {
     if (Date.now() < (this._cueUntil || 0)) return;
     if (Date.now() < (this._commandUntil || 0)) return;
-    const state = reading || (await this.driver.position());
-    if (!state || typeof state.paused !== 'boolean') {
-      // Blind: assume the device follows whatever we last told it.
-      if (this.state.paused !== this._assumedPaused) {
-        this._markCommanded(this.state.paused);
-        await (this.state.paused ? this.driver.pause() : this.driver.play());
-      }
-      return;
+    // Follow the laptop when room state changed. Do not use a noisy TV reading
+    // to press keys — that undoes the Fire remote and skips play after pause.
+    if (this.state.paused !== this._assumedPaused) {
+      this._markCommanded(this.state.paused);
+      await (this.state.paused ? this.driver.pause() : this.driver.play());
     }
-    if (this.state.paused === state.paused) {
-      this._assumedPaused = state.paused;
-      return;
-    }
-    this._markCommanded(this.state.paused);
-    await (this.state.paused ? this.driver.pause(state) : this.driver.resume(state));
   }
 
   /**
@@ -351,8 +346,9 @@ class Agent extends EventEmitter {
     this.emit('manual', { note: 'Resync: pausing the TV, then counting in' });
     this.busy = true;
     try {
+      const alreadyPaused = this._assumedPaused;
       this._markCommanded(true);
-      await this.driver.pause();
+      if (!alreadyPaused) await this.driver.pause();
     } finally {
       this.estimator.reset();
       this.busy = false;

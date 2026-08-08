@@ -217,8 +217,9 @@ test('a Fire-style TV does not publish pause flicker back to the laptop', async 
   const room = 'AGENTF';
 
   const device = new MockDriver({ startPosition: 50, readPosition: false, readPaused: true, latencyMs: 40 });
-  device.capabilities.publishPaused = false;
-  device.capabilities.commandHoldMs = 4000;
+  device.capabilities.publishPaused = true;
+  device.capabilities.publishStableMs = 1800;
+  device.capabilities.commandHoldMs = 200;
   const peer = browserPeer(room);
   await sleep(300);
 
