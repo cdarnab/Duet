@@ -35,7 +35,7 @@
 
   <div class="card" id="profile" style="display:none">
     <h2 style="margin-top:0">Your name</h2>
-    <p class="small">This is how you show up in the room and in chat.</p>
+    <p class="small">This is how you show up in the room and in chat. You only set it once.</p>
     <input id="display-name" type="text" minlength="2" maxlength="24" autocomplete="nickname" />
     <button class="btn" id="save-name" style="margin-top:10px">Save name</button>
     <p class="small" id="name-status" style="margin:10px 0 0"></p>
@@ -125,8 +125,12 @@
     label.textContent = me.name ? `${me.name} · ${me.email}` : me.email;
     who.appendChild(label);
     const profile = document.getElementById('profile');
-    profile.style.display = 'block';
-    document.getElementById('display-name').value = me.name || '';
+    if (me.canSetName) {
+      profile.style.display = 'block';
+      document.getElementById('display-name').value = '';
+    } else {
+      profile.style.display = 'none';
+    }
     if (me.owner) {
       who.appendChild(document.createTextNode(' · '));
       const admin = document.createElement('a');
@@ -155,10 +159,13 @@
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      status.textContent = 'Use 2–24 letters or numbers.';
+      status.textContent = body.error === 'name_locked'
+        ? 'Your name is already set.'
+        : 'Use 2–24 letters or numbers.';
       return;
     }
     status.textContent = 'Saved.';
+    document.getElementById('profile').style.display = 'none';
     const who = document.getElementById('who');
     if (who.firstChild) who.firstChild.textContent = `${body.name} · ${body.email}`;
   });
