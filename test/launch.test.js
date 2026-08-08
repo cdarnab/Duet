@@ -2,7 +2,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { pickRoom, sortMine, normalizeRoomInput, resolveCapsuleLaunch } = require('../agent/launch');
+const {
+  pickRoom,
+  pickRokuHost,
+  sortMine,
+  normalizeRoomInput,
+  resolveCapsuleLaunch,
+  resolveDeviceLaunch,
+} = require('../agent/launch');
 
 function fakeStore(initial = {}) {
   let cfg = { ...initial };
@@ -100,6 +107,59 @@ test('capsule launch asks for a code when the user did not create a room', async
   assert.match(asked, /Room code/i);
   assert.strictEqual(resolved.room, 'JOIN99');
   assert.strictEqual(resolved.roomSource, 'prompt');
+});
+
+test('pickRokuHost prefers a saved IP that is still on the LAN', () => {
+  const picked = pickRokuHost(
+    [
+      { host: '192.168.1.40', name: 'Bedroom' },
+      { host: '192.168.1.50', name: 'Living Room' },
+    ],
+    { savedHost: '192.168.1.50' }
+  );
+  assert.strictEqual(picked.name, 'Living Room');
+});
+
+test('roku launch discovers the TV and joins the host room', async () => {
+  const resolved = await resolveDeviceLaunch(
+    { device: 'roku' },
+    fakeStore({
+      server: 'https://duet.example',
+      email: 'host@example.com',
+      session: 'live-token',
+    }),
+    {
+      kind: 'roku',
+      canPrompt: () => false,
+      sessionValid: async () => true,
+      fetchMineRooms: async () => [{ code: 'JPKAZT', members: 1, createdAt: 1 }],
+      discoverRoku: async () => [{ host: '192.168.1.50', name: 'Living Room' }],
+      log: () => {},
+    }
+  );
+  assert.strictEqual(resolved.device, 'roku');
+  assert.strictEqual(resolved.room, 'JPKAZT');
+  assert.strictEqual(resolved.host, '192.168.1.50');
+  assert.strictEqual(resolved.name, 'Living Room');
+});
+
+test('roku launch fails when none are on the Wi-Fi', async () => {
+  await assert.rejects(
+    () =>
+      resolveDeviceLaunch(
+        { device: 'roku' },
+        fakeStore({ email: 'host@example.com', session: 'tok' }),
+        {
+          kind: 'roku',
+          canPrompt: () => false,
+          sessionValid: async () => true,
+          fetchMineRooms: async () => [{ code: 'AAAAAA', members: 1, createdAt: 1 }],
+          discoverRoku: async () => [],
+          log: () => {},
+        }
+      ),
+    /No Roku on this Wi-Fi/
+  );
 });
 
 test('capsule launch fails without a room when not a TTY', async () => {

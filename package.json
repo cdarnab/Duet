@@ -11,7 +11,9 @@
     "agent": "node agent/index.js",
     "capsule": "node agent/index.js --device nebula",
     "capsule:login": "node agent/index.js --login",
-    "capsule:logout": "node agent/index.js --logout"
+    "capsule:logout": "node agent/index.js --logout",
+    "roku": "node agent/index.js --device roku",
+    "roku:login": "node agent/index.js --login"
   },
   "engines": {
     "node": ">=20"

@@ -144,6 +144,19 @@ function sortMine(rooms) {
   });
 }
 
+function pickRokuHost(found, { savedHost, explicit } = {}) {
+  const list = Array.isArray(found) ? found : [];
+  if (explicit) {
+    return list.find((d) => d.host === explicit) || { host: explicit, name: explicit };
+  }
+  if (savedHost) {
+    const hit = list.find((d) => d.host === savedHost);
+    if (hit) return hit;
+  }
+  if (list.length === 1) return list[0];
+  return null;
+}
+
 function pickRoom({ mine = [], explicit } = {}) {
   const code = normalizeRoomInput(explicit);
   if (code) return { code, source: 'explicit' };
@@ -162,10 +175,16 @@ async function fetchMineRooms(server, session) {
 }
 
 async function resolveCapsuleLaunch(args, store, io = {}) {
+  return resolveDeviceLaunch(args, store, { ...io, kind: io.kind || 'nebula' });
+}
+
+async function resolveDeviceLaunch(args, store, io = {}) {
+  const kind = io.kind || args.device || 'nebula';
   const prompt = io.canPrompt || canPrompt;
   const ask = io.askLine || askLine;
   const askPw = io.askPassword || askPassword;
   const listDevices = io.listDevices;
+  const discover = io.discoverRoku;
   const log = io.log || console.log;
   const checkSession = io.sessionValid || sessionValid;
   const loadMine = io.fetchMineRooms || fetchMineRooms;
@@ -213,40 +232,72 @@ async function resolveCapsuleLaunch(args, store, io = {}) {
   }
   if (!room) {
     throw new Error(
-      'No room of yours is open. Create one in the Duet extension, or pass --room CODE.'
+      'No room of yours is open. Create one on your phone at duet.arnabbanik.com, or pass --room CODE.'
     );
   }
 
   let serial = args.serial || '';
   let host = args.host || '';
   const port = args.port || config.port || '';
-  async function devicesOrThrow() {
-    try {
-      return await listDevices(args.adb || 'adb');
-    } catch (err) {
-      if (err && err.code === 'ENOENT') {
-        throw new Error('ADB is missing. brew install android-platform-tools');
-      }
-      throw err;
-    }
-  }
+  let label = args.name || (kind === 'roku' ? 'Roku' : 'Capsule');
 
-  if (!serial && !host && config.serial && listDevices) {
-    const devices = await devicesOrThrow();
-    if (devices.some((d) => d.serial === config.serial && d.status === 'device')) {
-      serial = config.serial;
+  if (kind === 'roku') {
+    if (!host) {
+      const found = discover ? await discover({ timeoutMs: 5000 }) : [];
+      let picked = pickRokuHost(found, {
+        savedHost: config.rokuHost || config.host,
+        explicit: '',
+      });
+      if (!picked && found.length > 1 && prompt()) {
+        log('Rokus on this Wi-Fi:');
+        found.forEach((d, i) => log(`  ${i + 1}. ${d.name}  ${d.host}`));
+        const answer = await ask('Which Roku? (number or IP)');
+        const index = Number(answer) - 1;
+        if (Number.isInteger(index) && found[index]) picked = found[index];
+        else if (answer) picked = pickRokuHost(found, { explicit: answer.trim() });
+      }
+      if (!picked && found.length === 0 && (config.rokuHost || config.host)) {
+        picked = { host: config.rokuHost || config.host, name: 'Roku' };
+        log(`No SSDP reply — trying saved Roku ${picked.host}.`);
+      }
+      if (!picked) {
+        throw new Error(
+          'No Roku on this Wi-Fi. Same network as the TV, then Settings → System → Advanced → Control by mobile apps → On.'
+        );
+      }
+      host = picked.host;
+      label = args.name || picked.name || 'Roku';
+      log(`Using Roku ${picked.name || picked.host} (${picked.host}).`);
     }
-  }
-  if (!serial && !host && listDevices) {
-    const devices = await devicesOrThrow();
-    const { pickAdbSerial } = require('./drivers/androidtv');
-    serial = pickAdbSerial(devices) || '';
-  }
-  if (!serial && !host && config.host) host = config.host;
-  if (!serial && !host) {
-    throw new Error(
-      'No Capsule on ADB. Turn on Wireless debugging, then run adb devices until you see “device”.'
-    );
+  } else {
+    async function devicesOrThrow() {
+      try {
+        return await listDevices(args.adb || 'adb');
+      } catch (err) {
+        if (err && err.code === 'ENOENT') {
+          throw new Error('ADB is missing. brew install android-platform-tools');
+        }
+        throw err;
+      }
+    }
+
+    if (!serial && !host && config.serial && listDevices) {
+      const devices = await devicesOrThrow();
+      if (devices.some((d) => d.serial === config.serial && d.status === 'device')) {
+        serial = config.serial;
+      }
+    }
+    if (!serial && !host && listDevices) {
+      const devices = await devicesOrThrow();
+      const { pickAdbSerial } = require('./drivers/androidtv');
+      serial = pickAdbSerial(devices) || '';
+    }
+    if (!serial && !host && config.host) host = config.host;
+    if (!serial && !host) {
+      throw new Error(
+        'No Capsule on ADB. Turn on Wireless debugging, then run adb devices until you see “device”.'
+      );
+    }
   }
 
   store.saveConfig({
@@ -256,10 +307,13 @@ async function resolveCapsuleLaunch(args, store, io = {}) {
     serial: serial || undefined,
     host: host || undefined,
     port: port || undefined,
+    rokuHost: kind === 'roku' ? host : config.rokuHost,
+    device: kind,
   });
 
   return {
     onlyLogin: false,
+    device: kind,
     server,
     email,
     session,
@@ -268,7 +322,7 @@ async function resolveCapsuleLaunch(args, store, io = {}) {
     serial,
     host,
     port,
-    name: args.name || 'Capsule',
+    name: label,
     adb: args.adb || 'adb',
   };
 }
@@ -286,6 +340,8 @@ module.exports = {
   ensureSession,
   sortMine,
   pickRoom,
+  pickRokuHost,
   fetchMineRooms,
   resolveCapsuleLaunch,
+  resolveDeviceLaunch,
 };
