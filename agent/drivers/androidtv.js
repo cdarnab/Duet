@@ -31,11 +31,22 @@ function parseAdbDevices(text) {
   return devices;
 }
 
-function pickAdbSerial(devices) {
+function pickAdbSerial(devices, { prefer } = {}) {
   const live = (devices || []).filter(
     (d) => d.status === 'device' && !/^emulator-/.test(d.serial)
   );
   if (!live.length) return null;
+  const blob = (d) => `${d.serial} ${d.extra || ''}`;
+  if (prefer === 'firetv') {
+    const fire = live.find((d) => /amazon|fire|\baft|toshiba/i.test(blob(d)));
+    if (fire) return fire.serial;
+    if (live.length === 1) return live[0].serial;
+    return null;
+  }
+  if (prefer === 'nebula') {
+    const neb = live.find((d) => /d2426|nebula|_adb-tls-connect/i.test(blob(d)));
+    if (neb) return neb.serial;
+  }
   const mdns = live.find((d) => d.serial.includes('_adb-tls-connect'));
   return (mdns || live[0]).serial;
 }
@@ -43,6 +54,12 @@ function pickAdbSerial(devices) {
 async function listAdbDevices(adb = 'adb') {
   const { stdout } = await run(adb, ['devices', '-l'], { timeout: 8000 });
   return parseAdbDevices(stdout);
+}
+
+async function adbConnect(host, port = 5555, adb = 'adb') {
+  const serial = String(host).includes(':') ? String(host) : `${host}:${port}`;
+  await run(adb, ['connect', serial], { timeout: 8000 });
+  return serial;
 }
 
 /** Parse dumpsys media_session. Prefer a Netflix session when several exist. */
@@ -106,7 +123,7 @@ function parseAudioPlayback(dump) {
 
 class AndroidTvDriver {
   constructor({ host, port = 5555, serial, adb = 'adb', jumpBack = 10, jumpForward = 10, flavor = 'androidtv' }) {
-    this.name = flavor === 'nebula' ? 'nebula' : 'androidtv';
+    this.name = flavor === 'nebula' ? 'nebula' : flavor === 'firetv' ? 'firetv' : 'androidtv';
     this.flavor = flavor === 'nebula' ? 'nebula' : 'androidtv';
     const mdns = String(serial || host || '').includes('_adb-tls-connect');
     this.serial = serial || (mdns ? String(host) : `${host}:${port}`);
@@ -226,4 +243,5 @@ module.exports = {
   parseAdbDevices,
   pickAdbSerial,
   listAdbDevices,
+  adbConnect,
 };

@@ -239,7 +239,8 @@ async function resolveDeviceLaunch(args, store, io = {}) {
   let serial = args.serial || '';
   let host = args.host || '';
   const port = args.port || config.port || '';
-  let label = args.name || (kind === 'roku' ? 'Roku' : 'Capsule');
+  let label =
+    args.name || (kind === 'roku' ? 'Roku' : kind === 'firetv' ? 'Fire TV' : kind === 'androidtv' ? 'Android TV' : 'Capsule');
 
   if (kind === 'roku') {
     if (!host) {
@@ -270,6 +271,8 @@ async function resolveDeviceLaunch(args, store, io = {}) {
       log(`Using Roku ${picked.name || picked.host} (${picked.host}).`);
     }
   } else {
+    const connectAdb = io.adbConnect;
+    const savedAdbHost = kind === 'firetv' ? config.firetvHost : kind === 'androidtv' ? config.androidtvHost : config.host;
     async function devicesOrThrow() {
       try {
         return await listDevices(args.adb || 'adb');
@@ -287,16 +290,48 @@ async function resolveDeviceLaunch(args, store, io = {}) {
         serial = config.serial;
       }
     }
-    if (!serial && !host && listDevices) {
-      const devices = await devicesOrThrow();
-      const { pickAdbSerial } = require('./drivers/androidtv');
-      serial = pickAdbSerial(devices) || '';
+    if (!serial && !host && (args.host || savedAdbHost) && connectAdb) {
+      const target = args.host || savedAdbHost;
+      try {
+        serial = await connectAdb(target, Number(port || 5555), args.adb || 'adb');
+        log(`ADB connect ${serial}.`);
+      } catch {
+        /* fall through to listing / prompt */
+      }
     }
-    if (!serial && !host && config.host) host = config.host;
+    if (!serial && !host && listDevices) {
+      let devices = await devicesOrThrow();
+      const { pickAdbSerial } = require('./drivers/androidtv');
+      serial = pickAdbSerial(devices, { prefer: kind }) || '';
+      if (!serial && (kind === 'firetv' || kind === 'androidtv') && prompt()) {
+        const ip = await ask(
+          kind === 'firetv'
+            ? 'Fire TV IP (Settings → My Fire TV → About / Network)'
+            : 'Android TV IP (Wireless debugging)'
+        );
+        if (ip && connectAdb) {
+          try {
+            serial = await connectAdb(ip, Number(port || 5555), args.adb || 'adb');
+            host = ip;
+            devices = await devicesOrThrow();
+            serial = pickAdbSerial(devices, { prefer: kind }) || serial;
+          } catch {
+            host = ip;
+          }
+        } else if (ip) {
+          host = ip;
+        }
+      }
+    }
+    if (!serial && !host && savedAdbHost) host = savedAdbHost;
     if (!serial && !host) {
-      throw new Error(
-        'No Capsule on ADB. Turn on Wireless debugging, then run adb devices until you see “device”.'
-      );
+      const hint =
+        kind === 'firetv'
+          ? 'No Fire TV on ADB. Toshiba / Fire TV: Settings → My Fire TV → Developer options → ADB debugging + ADB over network, then npm run firetv again (or pass --host IP).'
+          : kind === 'androidtv'
+            ? 'No Android TV on ADB. Turn on Wireless debugging, then run adb devices until you see “device”.'
+            : 'No Capsule on ADB. Turn on Wireless debugging, then run adb devices until you see “device”.';
+      throw new Error(hint);
     }
   }
 
@@ -308,6 +343,8 @@ async function resolveDeviceLaunch(args, store, io = {}) {
     host: host || undefined,
     port: port || undefined,
     rokuHost: kind === 'roku' ? host : config.rokuHost,
+    firetvHost: kind === 'firetv' ? host || config.firetvHost : config.firetvHost,
+    androidtvHost: kind === 'androidtv' ? host || config.androidtvHost : config.androidtvHost,
     device: kind,
   });
 

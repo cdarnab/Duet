@@ -12,6 +12,7 @@
  *
  *   node agent/index.js --device nebula
  *   node agent/index.js --device roku
+ *   node agent/index.js --device firetv
  */
 
 const { Agent } = require('./agent');
@@ -23,7 +24,7 @@ const {
   loginSession,
   resolveDeviceLaunch,
 } = require('./launch');
-const { listAdbDevices } = require('./drivers/androidtv');
+const { listAdbDevices, adbConnect } = require('./drivers/androidtv');
 
 function parseArgs(argv) {
   const args = {};
@@ -64,7 +65,7 @@ async function buildDriver(args) {
         port: Number(args.port || 5555),
         serial: args.serial,
         adb: args.adb || 'adb',
-        flavor: args.device === 'nebula' ? 'nebula' : 'androidtv',
+        flavor: args.device === 'nebula' ? 'nebula' : args.device === 'firetv' ? 'firetv' : 'androidtv',
         ...shared,
       });
     }
@@ -78,7 +79,7 @@ async function buildDriver(args) {
       return new MockDriver({});
     }
     default:
-      throw new Error(`unknown device "${args.device}" — use roku, androidtv, nebula, appletv, or mock`);
+      throw new Error(`unknown device "${args.device}" — use roku, androidtv, firetv, nebula, appletv, or mock`);
   }
 }
 
@@ -136,6 +137,7 @@ async function main() {
   const args = parseArgs(process.argv);
   if (args.capsule && !args.device) args.device = 'nebula';
   if (args.roku && !args.device) args.device = 'roku';
+  if (args.firetv && !args.device) args.device = 'firetv';
 
   if (args.logout) {
     const cfg = store.loadConfig();
@@ -157,18 +159,25 @@ async function main() {
     return;
   }
 
-  if (args.device === 'nebula' || args.device === 'roku' || args.login) {
+  if (
+    args.device === 'nebula' ||
+    args.device === 'roku' ||
+    args.device === 'firetv' ||
+    args.device === 'androidtv' ||
+    args.login
+  ) {
     const resolved = await resolveDeviceLaunch(args, store, {
-      kind: args.device === 'roku' ? 'roku' : 'nebula',
+      kind: args.device || 'nebula',
       listDevices: listAdbDevices,
+      adbConnect,
       discoverRoku,
     });
     if (resolved.onlyLogin) {
-      console.log('Ready. Next time run npm run capsule or npm run roku.');
+      console.log('Ready. Next time run npm run capsule, npm run roku, or npm run firetv.');
       return;
     }
     const driver = await buildDriver({
-      device: resolved.device || 'nebula',
+      device: resolved.device || args.device || 'nebula',
       host: resolved.host,
       port: resolved.port,
       serial: resolved.serial,
