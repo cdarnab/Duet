@@ -221,7 +221,10 @@ npm run firetv                        # or double-click scripts/duet-firetv.comm
 # if it asks, enter the Fire TV IP
 ```
 
-4. Fire TV Netflix → same title → pause. Partner: extension → **Count us in**.
+4. Fire TV Netflix → same title → **leave Netflix on screen** → pause.
+   Partner: extension → **Count us in**. Laptop play/pause should follow on the
+   TV within a beat. Fire Netflix does not publish a real playhead, so Duet
+   does not try to skip/seek — if you drift, Resync.
 
 **Nebula Capsule (Nebula Play → Netflix Installation Guide), no HDMI.** That
 Netflix is a phone APK. You pick the movie with Nebula Connect mouse mode; Duet

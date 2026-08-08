@@ -102,6 +102,8 @@ class Agent extends EventEmitter {
         this.emit('roomstate', msg.state);
         if (msg.resync) {
           this._resync().catch((err) => this.emit('error', err));
+        } else if (!msg.self) {
+          this._followRoomNow().catch((err) => this.emit('error', err));
         }
         break;
       case 'cue':
@@ -252,6 +254,14 @@ class Agent extends EventEmitter {
     this._commandUntil = Date.now() + 1500;
     this._deviceStable = false;
     this._stableSince = 0;
+  }
+
+  /** Laptop pause/play should hit the TV immediately, not on the next poll. */
+  async _followRoomNow() {
+    if (this.busy || this.holdingRoom || this.stopped || this.state.seq < 0) return;
+    if (this.state.paused === this._assumedPaused) return;
+    this._markCommanded(this.state.paused);
+    await (this.state.paused ? this.driver.pause() : this.driver.play());
   }
 
   async _mirrorTransport(reading) {
