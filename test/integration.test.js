@@ -158,6 +158,33 @@ test('a late joiner receives the room state already in progress', async () => {
   late.close();
 });
 
+test('the first person in a room is the host and later joiners see them', async () => {
+  await ensureServer();
+  const room = 'HOSTAA';
+  const host = connect();
+  const guest = connect();
+  await Promise.all([host.open(), guest.open()]);
+
+  host.send({ type: 'hello', room, name: 'Arnab', surface: 'browser' });
+  const hostWelcome = await host.next((m) => m.type === 'welcome');
+  assert.strictEqual(hostWelcome.creator.name, 'Arnab');
+  assert.ok(hostWelcome.members.find((m) => m.host && m.name === 'Arnab'));
+
+  guest.send({ type: 'hello', room, name: 'Samira', surface: 'browser' });
+  const guestWelcome = await guest.next((m) => m.type === 'welcome');
+  assert.strictEqual(guestWelcome.creator.name, 'Arnab');
+  assert.ok(guestWelcome.members.find((m) => m.host && m.name === 'Arnab'));
+  assert.ok(guestWelcome.members.find((m) => !m.host && m.name === 'Samira'));
+
+  const joined = await host.next((m) => m.type === 'joined');
+  assert.strictEqual(joined.member.name, 'Samira');
+  assert.strictEqual(joined.member.host, false);
+  assert.strictEqual(joined.creator.name, 'Arnab');
+
+  host.close();
+  guest.close();
+});
+
 test('a cue schedules the same start moment for both sides', async () => {
   await ensureServer();
   const room = 'TESTCC';

@@ -17,13 +17,13 @@
   <p class="lede">Duet keeps two players on the same frame, down to a tenth of a second, on whatever you're already watching. You each stream from your own account. Duet only carries the timing.</p>
 
   <div class="card">
-    <p class="eyebrow">Browser extension · <span id="ext-version">v1.6.0</span></p>
+    <p class="eyebrow">Browser extension · <span id="ext-version">v1.7.0</span></p>
     <h2 style="margin-top:6px">Get the extension</h2>
     <p>Both people install this in Chrome, Edge, Brave, or Arc, then join the same room code.</p>
     <div class="row">
-      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.6.0</a>
+      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.7.0</a>
     </div>
-    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.6.0</span></strong>.</p>
+    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.7.0</span></strong>.</p>
     <ol class="small" style="margin-bottom:0; padding-left:1.2em">
       <li>Unzip the download</li>
       <li>Open <code>chrome://extensions</code></li>
@@ -46,7 +46,7 @@
     <div class="row">
       <button class="btn primary" id="create">Create a room</button>
     </div>
-    <p class="small" style="margin-bottom:0">You'll get a six-letter code. Send it to them however you like.</p>
+    <p class="small" style="margin-bottom:0">You'll get a six-letter code and a link you can send by Messages or email.</p>
   </div>
 
   <div class="card">
@@ -94,7 +94,7 @@
     const res = await fetch('/api/room/new');
     if (res.status === 401) { location.href = '/login'; return; }
     const { code } = await res.json();
-    location.href = `/companion.html#${code}`;
+    location.href = `/r/${code}`;
   });
 
   const go = (page) => () => {

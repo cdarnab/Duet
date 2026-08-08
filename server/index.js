@@ -79,14 +79,54 @@ async function handleRequest(req, res) {
       res.writeHead(401, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
       return res.end(JSON.stringify({ error: 'auth_required' }));
     }
-    res.writeHead(302, securityHeaders({ location: '/login' }));
+    const next = `${url.pathname}${url.search}`;
+    const safe = next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/login');
+    res.writeHead(302, securityHeaders({
+      location: safe ? `/login?next=${encodeURIComponent(next)}` : '/login',
+    }));
     return res.end();
   }
 
   if (url.pathname.startsWith('/api/room/new')) {
-    const room = store.create();
+    const session = auth.sessionFromRequest(req);
+    const creator = session
+      ? {
+          userId: session.user.id,
+          email: session.user.email,
+          name: auth.displayName(session.user),
+          memberId: null,
+        }
+      : null;
+    const room = store.create(creator);
     res.writeHead(200, securityHeaders({ 'content-type': 'application/json' }));
-    return res.end(JSON.stringify({ code: room.code }));
+    return res.end(JSON.stringify({
+      code: room.code,
+      creator: room.publicCreator(),
+      joinUrl: `/r/${room.code}`,
+    }));
+  }
+
+  const roomInfo = url.pathname.match(/^\/api\/room\/([A-Za-z0-9]{4,8})$/i);
+  if (roomInfo && req.method === 'GET') {
+    const room = store.get(roomInfo[1]);
+    if (!room) {
+      res.writeHead(404, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+      return res.end(JSON.stringify({ error: 'not_found' }));
+    }
+    res.writeHead(200, securityHeaders({ 'content-type': 'application/json' }));
+    return res.end(JSON.stringify({
+      code: room.code,
+      creator: room.publicCreator(),
+      members: room.roster().map((m) => ({ id: m.id, name: m.name, host: m.host, surface: m.surface })),
+    }));
+  }
+
+  const joinPath = url.pathname.match(/^\/r\/([A-Za-z0-9]{4,8})$/i);
+  if (joinPath && (req.method === 'GET' || req.method === 'HEAD')) {
+    const file = path.join(ROOT, 'web', 'join.html');
+    const buf = fs.readFileSync(file);
+    res.writeHead(200, securityHeaders({ 'content-type': 'text/html; charset=utf-8' }));
+    return res.end(buf);
   }
 
   let file = resolveStatic(url.pathname);
@@ -164,6 +204,7 @@ wss.on('connection', (socket, req) => {
             socket.close();
             return;
           }
+          member.userId = session.user.id;
           member.email = session.user.email;
           member.name = auth.displayName(session.user);
         }
@@ -177,10 +218,15 @@ wss.on('connection', (socket, req) => {
           send(socket, { type: 'error', error: 'invalid_room' });
           return;
         }
+        if (!auth.enabled() || !member.userId) {
+          const named = sanitizeText(msg.name, 32);
+          if (named) member.name = named;
+        }
         if (!member.name) {
-          member.name = sanitizeText(msg.name || (member.email ? member.email.split('@')[0] : 'Guest'), 32) || 'Guest';
+          member.name = sanitizeText(member.email ? member.email.split('@')[0] : 'Guest', 32) || 'Guest';
         }
         member.surface = sanitizeText(msg.surface || 'unknown', 16) || 'unknown';
+        room.claimCreator(member);
         room.add(member);
         send(socket, {
           type: 'welcome',
@@ -189,9 +235,14 @@ wss.on('connection', (socket, req) => {
           serverTime: Date.now(),
           state: room.state,
           members: room.roster(),
+          creator: room.publicCreator(),
           chat: room.chat.slice(-50),
         });
-        broadcast(room, { type: 'joined', member: member.toPublic() }, member.id);
+        broadcast(room, {
+          type: 'joined',
+          member: { ...member.toPublic(), host: room.isHost(member) },
+          creator: room.publicCreator(),
+        }, member.id);
         return;
       }
 

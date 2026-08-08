@@ -39,7 +39,8 @@
     if (res.status === 429) { error.textContent = 'Too many attempts. Wait a few minutes.'; return; }
     if (res.status === 403) { error.textContent = 'This account is disabled. Ask the owner to turn it back on.'; return; }
     if (!res.ok) { error.textContent = 'Invalid email or password.'; return; }
-    location.href = '/';
+    const next = new URLSearchParams(location.search).get('next') || '/';
+    location.href = next.startsWith('/') && !next.startsWith('//') ? next : '/';
   });
 </script>
 </body>

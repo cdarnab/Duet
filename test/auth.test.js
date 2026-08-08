@@ -45,7 +45,7 @@ test.after(() => {
 test('unauthenticated visitors are sent to login', async () => {
   const res = await fetch(`${base()}/`, { redirect: 'manual' });
   assert.strictEqual(res.status, 302);
-  assert.strictEqual(res.headers.get('location'), '/login');
+  assert.match(res.headers.get('location'), /^\/login(\?next=|$)/);
 });
 
 test('room API requires a session', async () => {
@@ -112,6 +112,12 @@ test('owner setup, login, invite, and invited user can create a room', async () 
   assert.strictEqual(room.status, 200);
   const body = await room.json();
   assert.match(body.code, /^[A-Z0-9]{6}$/);
+  assert.strictEqual(body.creator.name, 'Samira');
+  assert.match(body.joinUrl, /^\/r\/[A-Z0-9]{6}$/);
+
+  const page = await fetch(`${base()}${body.joinUrl}`, { headers: withCookie() });
+  assert.strictEqual(page.status, 200);
+  assert.match(await page.text(), /Join this room/);
 });
 
 test('owner can disable, reset, and delete a member', async () => {
