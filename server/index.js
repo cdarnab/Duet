@@ -138,11 +138,7 @@ function broadcast(room, msg, exceptId) {
 wss.on('connection', (socket, req) => {
   const member = new Member(crypto.randomUUID(), socket);
   let room = null;
-
-  socket.isAlive = true;
-  socket.on('pong', () => {
-    socket.isAlive = true;
-  });
+  socket.lastSeenApp = Date.now();
 
   socket.on('message', (raw) => {
     let msg;
@@ -153,6 +149,7 @@ wss.on('connection', (socket, req) => {
     }
     if (!msg || typeof msg.type !== 'string') return;
     member.lastSeen = Date.now();
+    socket.lastSeenApp = Date.now();
 
     switch (msg.type) {
       /* Clock alignment. Answered before anything else and never queued. */
@@ -279,15 +276,12 @@ wss.on('connection', (socket, req) => {
   socket.on('error', () => {});
 });
 
-/* Drop sockets that stopped answering — a dead peer should not show as present. */
+/* Drop sockets that stopped sending app-level pings. Protocol ping/pong is
+   unreliable through some reverse proxies and was causing reconnect loops. */
 const heartbeat = setInterval(() => {
+  const now = Date.now();
   for (const socket of wss.clients) {
-    if (socket.isAlive === false) {
-      socket.terminate();
-      continue;
-    }
-    socket.isAlive = false;
-    socket.ping();
+    if (now - (socket.lastSeenApp || 0) > 45000) socket.terminate();
   }
   store.sweep();
 }, 15000);
