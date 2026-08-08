@@ -169,9 +169,39 @@ where pyatv exposes a true absolute seek.
 **Both on laptops.** Install the extension on both, join the same room, open the
 movie, press play. Done. Skips and pauses propagate.
 
-**One on a TV.** Best: HDMI from the laptop, then treat it as a laptop. Otherwise
-open `/tv.html#YOURCODE` in the TV's browser and use the cue console. Arrow keys on
-the remote shift the room timecode; OK starts a countdown.
+**One on a TV.** Best: HDMI from the laptop, then treat it as a laptop. Do **not**
+screen-cast Netflix — DRM blacks out the picture. Otherwise open `/tv.html#YOURCODE`
+in the TV's browser (or on a phone next to the TV) and use the cue console. Arrow
+keys on the remote shift the room timecode; OK starts a countdown.
+
+**Roku at your house + partner on a MacBook (Netflix).** Casting will not work.
+Use the native Netflix app on the Roku and the extension on the MacBook, same
+room, same title.
+
+1. Partner: Chrome + Duet extension, log in, create or join the room, open Netflix.
+2. You: on a computer that is on the **same Wi-Fi as the Roku** (a laptop, Pi, etc.):
+
+```bash
+cd /path/to/duet
+npm install
+node agent --discover
+node agent --room YOURCODE --device roku --host ROKU_IP \
+  --server https://duet.arnabbanik.com \
+  --email you@example.com --password 'your-password'
+```
+
+3. On the Roku, open Netflix and the same movie/episode. Pause it.
+4. Partner clicks **Count us in** in the Duet popup. The agent presses play on the
+   Roku at the same beat.
+
+Netflix on Roku does not report a playhead, so Duet can keep play/pause and the
+countdown in sync automatically, but it cannot measure drift. If you separate, use
+**Resync** / **Count us in** again, or skip on the Roku remote. The agent must keep
+running for the whole movie.
+
+If you have no extra computer next to the Roku, skip the agent: open
+`https://duet.arnabbanik.com/tv.html#YOURCODE` on your phone and follow the cue
+console while Netflix plays on the Roku.
 
 **Voice and chat.** Open `/companion.html#YOURCODE` on your phone. That page carries
 peer-to-peer voice, notes, and the drift meter, and stays out of the way of the

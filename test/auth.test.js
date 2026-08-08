@@ -139,6 +139,19 @@ test('owner setup, login, invite, and invited user can create a room', async () 
   assert.match(await page.text(), /Join this room/);
 });
 
+test('a device agent with a session can join a room', async () => {
+  assert.ok(cookie, 'previous test should leave a session cookie');
+  const token = cookie.replace(/^duet_session=/, '');
+
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+  await new Promise((resolve) => ws.on('open', resolve));
+  ws.send(JSON.stringify({ type: 'hello', room: 'ROKUAA', name: 'Living room', surface: 'device', session: token }));
+  const msg = await new Promise((resolve) => ws.on('message', (raw) => resolve(JSON.parse(raw))));
+  assert.strictEqual(msg.type, 'welcome');
+  assert.strictEqual(msg.room, 'ROKUAA');
+  ws.close();
+});
+
 test('owner can disable, reset, and delete a member', async () => {
   cookie = '';
   const login = await fetch(`${base()}/login`, {
