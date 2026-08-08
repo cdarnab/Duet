@@ -82,6 +82,10 @@ function displayName(user) {
   return fallback.slice(0, 24) || 'Guest';
 }
 
+function hasChosenName(user) {
+  return Boolean(user && validName(user.name));
+}
+
 function hashToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
@@ -314,6 +318,9 @@ async function handleHttp(req, res, url, { securityHeaders }) {
     if (!session) return json(res, securityHeaders, 401, { error: 'auth_required' });
     if (req.method === 'POST') {
       if (!sameOrigin(req)) return json(res, securityHeaders, 403, { error: 'forbidden' });
+      if (hasChosenName(session.user)) {
+        return json(res, securityHeaders, 409, { error: 'name_locked' });
+      }
       const body = await readBody(req);
       if (!validName(body.name)) return json(res, securityHeaders, 400, { error: 'invalid_name' });
       session.user.name = normalizeName(body.name);
@@ -322,12 +329,14 @@ async function handleHttp(req, res, url, { securityHeaders }) {
         email: session.user.email,
         name: displayName(session.user),
         owner: isOwner(session.user),
+        canSetName: false,
       });
     }
     return json(res, securityHeaders, 200, {
       email: session.user.email,
       name: displayName(session.user),
       owner: isOwner(session.user),
+      canSetName: !hasChosenName(session.user),
     });
   }
 

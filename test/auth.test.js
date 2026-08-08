@@ -117,21 +117,23 @@ test('owner setup, login, invite, and invited user can create a room', async () 
 
   const me = await fetch(`${base()}/api/me`, { headers: withCookie() });
   assert.strictEqual(me.status, 200);
-  assert.strictEqual((await me.json()).name, 'Sam');
+  const meBody = await me.json();
+  assert.strictEqual(meBody.name, 'Sam');
+  assert.strictEqual(meBody.canSetName, false);
 
   const renamed = await fetch(`${base()}/api/me`, {
     method: 'POST',
     headers: withCookie(),
     body: JSON.stringify({ name: 'Samira' }),
   });
-  assert.strictEqual(renamed.status, 200);
-  assert.strictEqual((await renamed.json()).name, 'Samira');
+  assert.strictEqual(renamed.status, 409);
+  assert.strictEqual((await renamed.json()).error, 'name_locked');
 
   const room = await fetch(`${base()}/api/room/new`, { headers: withCookie() });
   assert.strictEqual(room.status, 200);
   const body = await room.json();
   assert.match(body.code, /^[A-Z0-9]{6}$/);
-  assert.strictEqual(body.creator.name, 'Samira');
+  assert.strictEqual(body.creator.name, 'Sam');
   assert.match(body.joinUrl, /^\/r\/[A-Z0-9]{6}$/);
 
   const page = await fetch(`${base()}${body.joinUrl}`, { headers: withCookie() });
