@@ -17,7 +17,7 @@ const COOKIE = 'duet_session';
 const SESSION_MS = 1000 * 60 * 60 * 24 * 30;
 const MIN_PASSWORD = 12;
 
-const store = { users: [], invites: [], sessions: [] };
+const store = { users: [], invites: [], sessions: [], resets: [] };
 let writeChain = Promise.resolve();
 
 function enabled() {
@@ -30,10 +30,12 @@ function load() {
     store.users = Array.isArray(parsed.users) ? parsed.users : [];
     store.invites = Array.isArray(parsed.invites) ? parsed.invites : [];
     store.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+    store.resets = Array.isArray(parsed.resets) ? parsed.resets : [];
   } catch {
     store.users = [];
     store.invites = [];
     store.sessions = [];
+    store.resets = [];
   }
 }
 
@@ -206,8 +208,45 @@ function userByEmail(email) {
   return store.users.find((user) => user.email === normalizeEmail(email));
 }
 
+function userById(id) {
+  return store.users.find((user) => user.id === id);
+}
+
 function isOwner(user) {
   return Boolean(user && user.email === OWNER_EMAIL);
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: displayName(user),
+    role: user.role || (isOwner(user) ? 'owner' : 'member'),
+    disabled: Boolean(user.disabled),
+    createdAt: user.createdAt || 0,
+  };
+}
+
+function pruneInvites() {
+  const now = Date.now();
+  store.invites = store.invites.filter((invite) => !invite.usedAt && invite.expiresAt > now);
+}
+
+function pruneResets() {
+  const now = Date.now();
+  store.resets = store.resets.filter((reset) => !reset.usedAt && reset.expiresAt > now);
+}
+
+function destroySessionsForUser(userId) {
+  store.sessions = store.sessions.filter((row) => row.userId !== userId);
+}
+
+function requireOwner(req, res, securityHeaders, { html = false } = {}) {
+  const session = sessionFromRequest(req);
+  if (session && isOwner(session.user)) return session;
+  if (html) redirect(res, securityHeaders, '/login');
+  else json(res, securityHeaders, 403, { error: 'forbidden' });
+  return null;
 }
 
 function sessionFromToken(token) {
@@ -216,7 +255,7 @@ function sessionFromToken(token) {
   const row = store.sessions.find((session) => session.hash === hashToken(token));
   if (!row) return null;
   const user = store.users.find((entry) => entry.id === row.userId);
-  if (!user) return null;
+  if (!user || user.disabled) return null;
   return { user, session: row };
 }
 
@@ -304,6 +343,7 @@ async function handleHttp(req, res, url, { securityHeaders }) {
     const user = userByEmail(email);
     const ok = user ? await verifyPassword(password, user.passwordHash) : await verifyPassword(password, 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
     if (!user || !ok) return json(res, securityHeaders, 401, { error: 'invalid_credentials' });
+    if (user.disabled) return json(res, securityHeaders, 403, { error: 'disabled' });
     const token = await createSession(user.id);
     res.setHeader('set-cookie', `${COOKIE}=${encodeURIComponent(token)}; ${cookieFlags(req)}`);
     return json(res, securityHeaders, 200, { ok: true, owner: isOwner(user) });
@@ -352,7 +392,7 @@ async function handleHttp(req, res, url, { securityHeaders }) {
     if (!validPassword(body.password)) return json(res, securityHeaders, 400, { error: 'weak_password' });
     if (!validName(body.name)) return json(res, securityHeaders, 400, { error: 'invalid_name' });
     pruneSessions();
-    store.invites = store.invites.filter((invite) => !invite.usedAt && invite.expiresAt > Date.now());
+    pruneInvites();
     const invite = store.invites.find((row) => row.hash === hashToken(inviteMatch[1]));
     if (!invite) return json(res, securityHeaders, 401, { error: 'invalid_invite' });
     if (userByEmail(invite.email)) return json(res, securityHeaders, 409, { error: 'already_registered' });
@@ -371,24 +411,54 @@ async function handleHttp(req, res, url, { securityHeaders }) {
     return json(res, securityHeaders, 200, { ok: true });
   }
 
-  if (pathname === '/admin' || pathname === '/api/invites') {
-    const session = sessionFromRequest(req);
-    if (!session || !isOwner(session.user)) {
-      if (pathname === '/admin') return redirect(res, securityHeaders, '/login');
-      return json(res, securityHeaders, 403, { error: 'forbidden' });
+  const resetMatch = pathname.match(/^\/reset\/([A-Za-z0-9_-]+)$/);
+  if (resetMatch) {
+    if (req.method === 'GET') return sendHtml(res, securityHeaders, 'reset.html');
+    if (req.method !== 'POST' || !sameOrigin(req)) return json(res, securityHeaders, 403, { error: 'forbidden' });
+    if (!rateLimit(`reset:${clientIp(req)}`, 10, 15 * 60 * 1000)) {
+      return json(res, securityHeaders, 429, { error: 'too_many_attempts' });
     }
-    if (pathname === '/admin' && req.method === 'GET') return sendHtml(res, securityHeaders, 'admin.html');
-    if (pathname === '/api/invites' && req.method === 'GET') {
+    const body = await readBody(req);
+    if (!validPassword(body.password)) return json(res, securityHeaders, 400, { error: 'weak_password' });
+    pruneResets();
+    const reset = store.resets.find((row) => row.hash === hashToken(resetMatch[1]));
+    if (!reset) return json(res, securityHeaders, 401, { error: 'invalid_reset' });
+    const user = userById(reset.userId) || userByEmail(reset.email);
+    if (!user) return json(res, securityHeaders, 401, { error: 'invalid_reset' });
+    user.passwordHash = await hashPassword(body.password);
+    reset.usedAt = Date.now();
+    destroySessionsForUser(user.id);
+    if (user.disabled) {
+      await persist();
+      return json(res, securityHeaders, 200, { ok: true, disabled: true });
+    }
+    const token = await createSession(user.id);
+    res.setHeader('set-cookie', `${COOKIE}=${encodeURIComponent(token)}; ${cookieFlags(req)}`);
+    return json(res, securityHeaders, 200, { ok: true });
+  }
+
+  if (pathname === '/admin') {
+    if (!requireOwner(req, res, securityHeaders, { html: true })) return true;
+    if (req.method === 'GET') return sendHtml(res, securityHeaders, 'admin.html');
+    return json(res, securityHeaders, 405, { error: 'method_not_allowed' });
+  }
+
+  if (pathname === '/api/invites') {
+    const session = requireOwner(req, res, securityHeaders);
+    if (!session) return true;
+    if (req.method === 'GET') {
       pruneSessions();
-      store.invites = store.invites.filter((invite) => invite.expiresAt > Date.now());
+      pruneInvites();
       return json(res, securityHeaders, 200, {
-        users: store.users.map((user) => ({ email: user.email, name: displayName(user), role: user.role })),
-        invites: store.invites
-          .filter((invite) => !invite.usedAt)
-          .map((invite) => ({ email: invite.email, expiresAt: invite.expiresAt })),
+        users: store.users.map(publicUser),
+        invites: store.invites.map((invite) => ({
+          email: invite.email,
+          expiresAt: invite.expiresAt,
+          createdAt: invite.createdAt || 0,
+        })),
       });
     }
-    if (pathname === '/api/invites' && req.method === 'POST') {
+    if (req.method === 'POST') {
       if (!sameOrigin(req)) return json(res, securityHeaders, 403, { error: 'forbidden' });
       if (!rateLimit(`create-invite:${session.user.id}`, 20, 60 * 60 * 1000)) {
         return json(res, securityHeaders, 429, { error: 'too_many_attempts' });
@@ -407,8 +477,66 @@ async function handleHttp(req, res, url, { securityHeaders }) {
         usedAt: null,
       });
       await persist();
-      return json(res, securityHeaders, 200, { ok: true, email, url: `/invite/${token}` });
+      return json(res, securityHeaders, 200, { ok: true, email, url: `/invite/${token}`, expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7 });
     }
+    return json(res, securityHeaders, 405, { error: 'method_not_allowed' });
+  }
+
+  const userAction = pathname.match(/^\/api\/users\/([0-9a-f-]{36})\/(disable|enable|reset)$/i);
+  if (userAction) {
+    const session = requireOwner(req, res, securityHeaders);
+    if (!session) return true;
+    if (req.method !== 'POST' || !sameOrigin(req)) return json(res, securityHeaders, 403, { error: 'forbidden' });
+    const user = userById(userAction[1]);
+    if (!user) return json(res, securityHeaders, 404, { error: 'not_found' });
+    if (isOwner(user)) return json(res, securityHeaders, 400, { error: 'owner_protected' });
+    const action = userAction[2].toLowerCase();
+    if (action === 'disable') {
+      user.disabled = true;
+      user.disabledAt = Date.now();
+      destroySessionsForUser(user.id);
+      await persist();
+      return json(res, securityHeaders, 200, { ok: true, user: publicUser(user) });
+    }
+    if (action === 'enable') {
+      user.disabled = false;
+      user.disabledAt = null;
+      await persist();
+      return json(res, securityHeaders, 200, { ok: true, user: publicUser(user) });
+    }
+    if (!rateLimit(`reset-link:${session.user.id}`, 20, 60 * 60 * 1000)) {
+      return json(res, securityHeaders, 429, { error: 'too_many_attempts' });
+    }
+    pruneResets();
+    store.resets = store.resets.filter((reset) => reset.userId !== user.id || reset.usedAt);
+    const token = randomToken();
+    const expiresAt = Date.now() + 1000 * 60 * 60 * 24;
+    store.resets.push({
+      hash: hashToken(token),
+      userId: user.id,
+      email: user.email,
+      createdAt: Date.now(),
+      expiresAt,
+      usedAt: null,
+    });
+    await persist();
+    return json(res, securityHeaders, 200, { ok: true, email: user.email, url: `/reset/${token}`, expiresAt });
+  }
+
+  const userDelete = pathname.match(/^\/api\/users\/([0-9a-f-]{36})$/i);
+  if (userDelete) {
+    const session = requireOwner(req, res, securityHeaders);
+    if (!session) return true;
+    if (req.method !== 'DELETE' || !sameOrigin(req)) return json(res, securityHeaders, 403, { error: 'forbidden' });
+    const user = userById(userDelete[1]);
+    if (!user) return json(res, securityHeaders, 404, { error: 'not_found' });
+    if (isOwner(user)) return json(res, securityHeaders, 400, { error: 'owner_protected' });
+    store.users = store.users.filter((entry) => entry.id !== user.id);
+    destroySessionsForUser(user.id);
+    store.invites = store.invites.filter((invite) => invite.email !== user.email || invite.usedAt);
+    store.resets = store.resets.filter((reset) => reset.userId !== user.id || reset.usedAt);
+    await persist();
+    return json(res, securityHeaders, 200, { ok: true });
   }
 
   return false;

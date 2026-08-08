@@ -179,6 +179,40 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     reply({ ok: true, config });
     return true;
   }
+  if (msg.type === 'createRoom') {
+    (async () => {
+      try {
+        const session = await sessionToken();
+        const headers = {};
+        if (session) headers.cookie = `duet_session=${session}`;
+        const res = await fetch(`${config.server.replace(/\/+$/, '')}/api/room/new`, { headers });
+        if (res.status === 401 || res.status === 403) {
+          authRequired = true;
+          fanout({ type: 'status', connected: false, room: config.room, authRequired: true });
+          reply({ ok: false, authRequired: true });
+          return;
+        }
+        if (!res.ok) {
+          reply({ ok: false });
+          return;
+        }
+        const body = await res.json();
+        const code = String(body.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+        if (code.length < 4) {
+          reply({ ok: false });
+          return;
+        }
+        config.room = code;
+        chrome.storage.local.set({ duetConfig: config });
+        authRequired = false;
+        connect();
+        reply({ ok: true, config, code });
+      } catch {
+        reply({ ok: false });
+      }
+    })();
+    return true;
+  }
   if (msg.type === 'leave') {
     config.room = '';
     chrome.storage.local.set({ duetConfig: config });

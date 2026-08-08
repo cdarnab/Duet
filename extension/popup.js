@@ -64,6 +64,24 @@ $('join').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'setConfig', config }, () => setTimeout(refresh, 400));
 });
 
+$('create').addEventListener('click', () => {
+  $('status-text').textContent = 'Creating room…';
+  chrome.runtime.sendMessage({ type: 'createRoom' }, (res) => {
+    if (res?.code) $('room').value = sanitizeRoom(res.code);
+    if (res?.authRequired) {
+      const loginWrap = $('login-wrap');
+      if (loginWrap) loginWrap.style.display = 'block';
+      $('status-text').textContent = 'Log in on the Duet site first';
+      return;
+    }
+    if (!res?.ok) {
+      $('status-text').textContent = 'Could not create a room';
+      return;
+    }
+    setTimeout(refresh, 400);
+  });
+});
+
 $('leave').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'leave' }, () => setTimeout(refresh, 200)));
 $('cue').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'cue' }));
 $('resync').addEventListener('click', () => {
