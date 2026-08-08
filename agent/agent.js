@@ -37,6 +37,7 @@ class Agent extends EventEmitter {
     this.busy = false; // a correction plan is mid-execution
     this.lastDrift = null;
     this.holdingRoom = false;
+    this._assumedPaused = true;
     this.stopped = false;
     this._timers = [];
   }

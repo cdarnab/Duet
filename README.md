@@ -203,6 +203,27 @@ If you have no extra computer next to the Roku, skip the agent: open
 `https://duet.arnabbanik.com/tv.html#YOURCODE` on your phone and follow the cue
 console while Netflix plays on the Roku.
 
+**Nebula Capsule (Nebula Play → Netflix Installation Guide), no HDMI.** That
+Netflix is a phone APK. You pick the movie with Nebula Connect mouse mode; Duet
+cannot tap that UI. After the title is open and paused, a laptop on the same
+Wi-Fi can drive **play / pause / skip** with Android media keys (the same ones
+Bluetooth headphones use):
+
+```bash
+brew install android-platform-tools
+# On the Capsule: Settings → Developer options → Wireless debugging → note IP
+adb pair CAPSULE_IP:PAIRING_PORT    # once, if it asks for a code
+adb connect CAPSULE_IP:5555
+
+node agent --room YOURCODE --device nebula --host CAPSULE_IP \
+  --server https://duet.arnabbanik.com \
+  --email you@example.com --password 'your-password'
+```
+
+Partner uses Chrome + the Duet extension on the same title, then **Count us in**.
+Do not screen-cast; DRM will black the picture. If ADB will not pair, use the
+phone cue console instead: `/tv.html#YOURCODE`.
+
 **Voice and chat.** Open `/companion.html#YOURCODE` on your phone. That page carries
 peer-to-peer voice, notes, and the drift meter, and stays out of the way of the
 movie. Use headphones — speakers will echo into the mic.

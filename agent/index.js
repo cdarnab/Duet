@@ -59,10 +59,17 @@ async function buildDriver(args) {
       return new RokuDriver({ host: args.host, ...shared });
     }
     case 'androidtv':
-    case 'firetv': {
+    case 'firetv':
+    case 'nebula': {
       const { AndroidTvDriver } = require('./drivers/androidtv');
-      if (!args.host) throw new Error('androidtv needs --host');
-      return new AndroidTvDriver({ host: args.host, adb: args.adb || 'adb', ...shared });
+      if (!args.host) throw new Error(`${args.device} needs --host (projector IP from Wireless debugging)`);
+      return new AndroidTvDriver({
+        host: args.host,
+        port: Number(args.port || 5555),
+        adb: args.adb || 'adb',
+        flavor: args.device === 'nebula' ? 'nebula' : 'androidtv',
+        ...shared,
+      });
     }
     case 'appletv': {
       const { AppleTvDriver } = require('./drivers/appletv');
@@ -74,7 +81,7 @@ async function buildDriver(args) {
       return new MockDriver({});
     }
     default:
-      throw new Error(`unknown device "${args.device}" — use roku, androidtv, appletv, or mock`);
+      throw new Error(`unknown device "${args.device}" — use roku, androidtv, nebula, appletv, or mock`);
   }
 }
 
