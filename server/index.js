@@ -8,6 +8,7 @@ const { WebSocketServer } = require('ws');
 
 const { RoomStore, Member, validRoomCode, normalizeRoomCode } = require('./rooms');
 const auth = require('./auth');
+const DuetSync = require('../shared/sync');
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -392,11 +393,16 @@ wss.on('connection', (socket, req) => {
         return;
       }
 
-      /* Snap every player back to the room clock — not just the requester. */
-      case 'resync':
+      /* Pause everyone, then count in. Seek-only resync is a no-op on Fire/Nebula. */
+      case 'resync': {
         if (!room) return;
-        broadcast(room, { type: 'state', state: room.state, serverTime: Date.now(), resync: true });
+        const at = DuetSync.projected(room.state, Date.now());
+        const state = room.applyState({ paused: true, position: at, rate: 1 }, member.id);
+        broadcast(room, { type: 'state', state, serverTime: Date.now(), resync: true });
+        const startAt = Date.now() + 3200;
+        broadcast(room, { type: 'cue', startAt, from: member.id, position: state.position });
         return;
+      }
 
       /* Position heartbeat — powers the live drift readout on every surface. */
       case 'tick': {

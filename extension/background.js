@@ -255,17 +255,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     return true;
   }
   if (msg.type === 'resync') {
-    const at =
-      typeof DuetSync !== 'undefined' && DuetSync.projected
-        ? DuetSync.projected(roomState, Date.now() + (clock.offset || 0))
-        : Number(roomState.position) || 0;
-    roomState = { ...roomState, paused: true, position: at, rate: 1 };
-    // Pause everyone, then count in. A seek-only resync is a no-op on Nebula.
-    send({ type: 'state', paused: true, position: at, rate: 1 });
-    send({ type: 'cue', inMs: 3200 });
-    const payload = { type: 'state', state: roomState, resync: true, offset: clock.offset, selfId };
-    fanout(payload);
-    pingTabs({ type: 'resync', state: roomState });
+    send({ type: 'resync' });
     reply({ ok: true, connected });
     return true;
   }
