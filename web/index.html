@@ -39,7 +39,7 @@
 
   <div class="card">
     <h2 style="margin-top:0">Join a room</h2>
-    <input type="text" id="code" placeholder="ABCDEF" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+    <input type="text" id="code" placeholder="6-letter code" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
     <div class="row" style="margin-top:10px">
       <button class="btn" id="join-companion">Open console</button>
       <button class="btn" id="join-tv">Open on TV</button>
@@ -69,8 +69,13 @@
 
 <script>
   const codeInput = document.getElementById('code');
+  const sanitizeRoom = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   codeInput.addEventListener('input', () => {
-    codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    codeInput.value = sanitizeRoom(codeInput.value);
+  });
+  codeInput.addEventListener('paste', (event) => {
+    event.preventDefault();
+    codeInput.value = sanitizeRoom((event.clipboardData || window.clipboardData).getData('text'));
   });
 
   document.getElementById('create').addEventListener('click', async () => {
