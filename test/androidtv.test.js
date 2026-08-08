@@ -91,7 +91,7 @@ test('firetv driver stays open-loop and uses the Fire play/pause key', async () 
   assert.strictEqual(driver.flavor, 'firetv');
   assert.strictEqual(driver.capabilities.canJump, false);
   assert.strictEqual(driver.capabilities.readPaused, true);
-  assert.strictEqual(driver.capabilities.publishPaused, false);
+  assert.strictEqual(driver.capabilities.publishPaused, true);
   assert.deepStrictEqual(await driver.position(), { position: null, paused: false });
   await driver.pause();
   assert.deepStrictEqual(await driver.position(), { position: null, paused: true });
@@ -101,6 +101,35 @@ test('firetv driver stays open-loop and uses the Fire play/pause key', async () 
   assert.strictEqual(keys.length, 2, 'one play/pause key per command, not a toggle fight');
   assert.ok(!calls.some((c) => c.includes('media dispatch')));
   assert.ok(!calls.some((c) => /keyevent 12[67]/.test(c)));
+});
+
+test('firetv play still presses the remote when sensors still say playing', async () => {
+  const calls = [];
+  const driver = new AndroidTvDriver({
+    serial: '192.168.1.146:5555',
+    flavor: 'firetv',
+    exec: async (_adb, args) => {
+      const line = args.join(' ');
+      calls.push(line);
+      if (line.includes('mCurrentFocus')) {
+        return { stdout: 'mCurrentFocus=Window{a u0 com.netflix.ninja/com.netflix.ninja.MainActivity}\n' };
+      }
+      if (line.includes('dumpsys power')) return { stdout: 'Wake Locks: size=4\n' };
+      if (line.includes('Audio Focus stack')) {
+        return {
+          stdout:
+            'Audio Focus stack entries (last is top of stack):\n  pack: com.netflix.ninja -- gain: GAIN\nAudio event log:\n',
+        };
+      }
+      return { stdout: '\n' };
+    },
+  });
+  assert.deepStrictEqual(await driver.position(), { position: null, paused: false });
+  await driver.play();
+  assert.ok(
+    calls.some((c) => c.includes('keyevent 85')),
+    'play must press 85 even if dumpsys still says playing'
+  );
 });
 
 test('firetv pause brings Netflix forward from the launcher', async () => {

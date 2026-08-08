@@ -257,13 +257,13 @@ class AndroidTvDriver {
     this.capabilities = {
       readPosition: false,
       readPaused: this.flavor === 'firetv',
-      // Fire focus/wake-lock flicker would unpause the laptop if we published it.
-      publishPaused: this.flavor !== 'firetv',
+      publishPaused: this.flavor === 'firetv',
+      publishStableMs: this.flavor === 'firetv' ? 1800 : 700,
       canJump: this.flavor !== 'firetv',
       jumpBack,
       jumpForward,
       commandLatencyMs: 120,
-      commandHoldMs: this.flavor === 'firetv' ? 4000 : 1500,
+      commandHoldMs: this.flavor === 'firetv' ? 2500 : 1500,
     };
   }
 
@@ -292,8 +292,9 @@ class AndroidTvDriver {
       this.capabilities.readPosition = false;
       this.capabilities.canJump = false;
       this.capabilities.readPaused = true;
-      this.capabilities.publishPaused = false;
-      this.capabilities.commandHoldMs = 4000;
+      this.capabilities.publishPaused = true;
+      this.capabilities.publishStableMs = 1800;
+      this.capabilities.commandHoldMs = 2500;
       return this;
     }
 
@@ -353,18 +354,12 @@ class AndroidTvDriver {
   }
 
   /**
-   * Fire remote play/pause is KEYCODE_MEDIA_PLAY_PAUSE (85) only. One press per
-   * command. A second press only if the TV clearly did not change — the first
-   * often just shows player chrome. Never a third: that is pause→play→pause.
+   * Fire Netflix still reports “playing” after a pause, so we must not read
+   * sensors to decide whether to press. Laptop follow = exactly one remote
+   * play/pause key (85). Overlay is usually already up after the previous press.
    */
-  async _fireSetPaused(wantPaused) {
+  async _fireSetPaused(_wantPaused) {
     await this.ensureForeground();
-    const before = await this.position();
-    if (before && before.paused === wantPaused) return;
-    await this._key(KEY.playPause);
-    await sleep(900);
-    const after = await this.position();
-    if (!after || after.paused === wantPaused) return;
     await this._key(KEY.playPause);
   }
 

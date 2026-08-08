@@ -223,10 +223,9 @@ npm run firetv                        # or double-click scripts/duet-firetv.comm
 
 4. Open Netflix on the Fire TV (same title), pause it. If you accidentally hit
    Home, the agent brings Netflix back before sending play/pause.
-5. Partner laptop: extension → **Count us in**. Laptop play/pause should pause
-   and resume the TV. Fire Netflix has no real playhead, so Duet will not skip.
-   If you drift, **Resync** (pause both, then count in). Reload the extension
-   (1.9.1) after this update.
+5. Partner laptop: extension → **Count us in**. Play/pause from the laptop or
+   the Fire remote should follow both ways. If you drift, **Resync** (pause both,
+   then count in). Fire Netflix cannot seek.
 
 You want the agent to print **pause/play is visible**, not closed loop.
 
