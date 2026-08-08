@@ -1,117 +1,24 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="description" content="Log in to start or join a Duet room." />
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" /><meta name="description" content="Log in to start or join a Duet room." />
 <title>Duet — log in</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-<link rel="preload" as="image" href="/assets/hero-photo-1280.webp" media="(max-width: 900px)" />
-<link rel="preload" as="image" href="/assets/hero-photo-2200.webp" media="(min-width: 901px)" />
-<link rel="stylesheet" href="/app.css" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" /><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" /><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="preload" as="image" href="/assets/hero-illustrated-1024.webp" media="(max-width:900px)" /><link rel="preload" as="image" href="/assets/hero-illustrated-2048.webp" media="(min-width:901px)" /><link rel="stylesheet" href="/app.css" />
 </head>
 <body class="login-page">
-<picture class="login-media" aria-hidden="true">
-  <source media="(max-width: 900px)" srcset="/assets/hero-photo-1280.webp" type="image/webp" />
-  <source srcset="/assets/hero-photo-2200.webp" type="image/webp" />
-  <img src="/assets/hero-photo-1600.jpg" alt="" fetchpriority="high" />
-</picture>
-<div class="login-shade" aria-hidden="true"></div>
-<div class="story-grain" aria-hidden="true"></div>
-
-<header class="login-header">
-  <a class="wordmark" href="/" aria-label="Duet home">DUET</a>
-  <div class="login-header-actions">
-    <div class="language-switch" role="group" aria-label="Language">
-      <button type="button" data-lang="en" aria-pressed="true">EN</button>
-      <button type="button" data-lang="bn" aria-pressed="false">বাংলা</button>
-    </div>
-    <a class="back-link" href="/"><span aria-hidden="true">←</span> <span data-i18n="loginBack">Back to home</span></a>
-  </div>
-</header>
-
+<picture class="login-media" aria-hidden="true"><source media="(max-width:900px)" srcset="/assets/hero-illustrated-1024.webp" type="image/webp" /><source srcset="/assets/hero-illustrated-1536.webp 1536w, /assets/hero-illustrated-2048.webp 2048w" type="image/webp" /><img src="/assets/hero-illustrated-1536.jpg" alt="" fetchpriority="high" /></picture><div class="login-shade" aria-hidden="true"></div><div class="story-grain" aria-hidden="true"></div>
+<header class="login-header"><a class="wordmark" href="/">DUET</a><div class="login-header-actions"><div class="language-switch" role="group" aria-label="Language"><button type="button" data-lang="en">EN</button><button type="button" data-lang="bn">বাংলা</button></div><a class="back-link" href="/"><span>←</span> <span data-i18n="back">Back to home</span></a></div></header>
 <main class="login-layout">
-  <section class="login-story" aria-labelledby="login-story-title">
-    <h1 id="login-story-title" data-i18n-html="loginHeadline">Our next watch is <em>waiting</em>.</h1>
-    <p data-i18n="loginSubhead">Pick up where you left off—together.</p>
-  </section>
-
-  <section class="login-card" aria-labelledby="login-title">
-    <p class="eyebrow invite-label"><span class="lock-mark" aria-hidden="true">⌾</span><span data-i18n="inviteOnly">Invite only</span></p>
-    <h2 id="login-title" data-i18n="welcomeBack">Welcome back.</h2>
-    <p class="login-intro" data-i18n="loginIntro">Log in to start or join a room.</p>
-
-    <form id="form" novalidate>
-      <label for="email" data-i18n="email">Email</label>
-      <input id="email" name="email" type="email" autocomplete="username" inputmode="email" required />
-
-      <div class="password-label-row">
-        <label for="password" data-i18n="password">Password</label>
-        <button class="text-button" id="toggle-password" type="button" data-i18n="showPassword">Show password</button>
-      </div>
-      <input id="password" name="password" type="password" autocomplete="current-password" required minlength="12" />
-
-      <button class="btn primary wide login-submit" type="submit" data-i18n="loginButton">Log in</button>
-      <p class="form-status" id="error" role="alert" aria-live="polite"></p>
-    </form>
-
-    <p class="invited-note" data-i18n="invitedOnly">Only invited people can use this Duet.</p>
+  <section class="login-story"><h1 data-i18n-html="loginHero">Our next watch is <em>waiting</em>.</h1><p data-i18n="loginSub">Pick up where you left off—together.</p></section>
+  <section class="login-card"><p class="eyebrow invite-label"><span class="lock-mark" aria-hidden="true">⌾</span><span data-i18n="invite">Invite only</span></p><h2 data-i18n="welcome">Welcome back.</h2><p class="login-intro" data-i18n="loginIntro">Log in to start or join a room.</p>
+    <form id="form" novalidate><label for="email" data-i18n="email">Email</label><input id="email" type="email" autocomplete="username" required /><div class="password-label-row"><label for="password" data-i18n="password">Password</label><button class="text-button" id="toggle-password" type="button" data-i18n="show">Show password</button></div><input id="password" type="password" autocomplete="current-password" required minlength="12" /><button class="btn primary wide login-submit" type="submit" data-i18n="loginButton">Log in</button><p class="form-status" id="error" role="alert"></p></form>
+    <p class="invited-note" data-i18n="invited">Only invited people can use this Duet.</p>
   </section>
 </main>
-
-<script src="/i18n.js"></script>
-<script>
-  const form = document.getElementById('form');
-  const password = document.getElementById('password');
-  const passwordToggle = document.getElementById('toggle-password');
-  const submit = form.querySelector('[type="submit"]');
-  const error = document.getElementById('error');
-  const t = (key) => window.DuetI18n?.t(key) || key;
-  let errorKey = '';
-
-  passwordToggle.addEventListener('click', () => {
-    const showing = password.type === 'text';
-    password.type = showing ? 'password' : 'text';
-    passwordToggle.dataset.i18n = showing ? 'showPassword' : 'hidePassword';
-    passwordToggle.textContent = t(passwordToggle.dataset.i18n);
-  });
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    error.textContent = '';
-    errorKey = '';
-    if (!form.reportValidity()) return;
-    submit.disabled = true;
-    submit.textContent = t('loggingIn');
-    const res = await fetch('/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        email: document.getElementById('email').value,
-        password: password.value,
-      }),
-    }).catch(() => null);
-
-    if (!res) errorKey = 'invalidLogin';
-    else if (res.status === 429) errorKey = 'tooManyAttempts';
-    else if (res.status === 403) errorKey = 'disabledAccount';
-    else if (!res.ok) errorKey = 'invalidLogin';
-    else {
-      const next = new URLSearchParams(location.search).get('next') || '/';
-      location.href = next.startsWith('/') && !next.startsWith('//') ? next : '/';
-      return;
-    }
-    error.textContent = t(errorKey);
-    submit.disabled = false;
-    submit.textContent = t('loginButton');
-  });
-
-  window.addEventListener('duet:languagechange', () => {
-    passwordToggle.textContent = t(passwordToggle.dataset.i18n);
-    if (errorKey) error.textContent = t(errorKey);
-  });
-</script>
-</body>
-</html>
+<script src="/i18n.js"></script><script>
+const form=document.getElementById('form'),password=document.getElementById('password'),toggle=document.getElementById('toggle-password'),submit=form.querySelector('[type="submit"]'),error=document.getElementById('error');const t=(key)=>window.DuetI18n?.t(key)||key;let errorKey='';
+toggle.addEventListener('click',()=>{const showing=password.type==='text';password.type=showing?'password':'text';toggle.dataset.i18n=showing?'show':'hide';toggle.textContent=t(toggle.dataset.i18n);});
+form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';errorKey='';if(!form.reportValidity())return;submit.disabled=true;submit.textContent=t('loginBusy');const res=await fetch('/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:password.value})}).catch(()=>null);if(!res)errorKey='invalidLogin';else if(res.status===429)errorKey='attempts';else if(res.status===403)errorKey='disabled';else if(!res.ok)errorKey='invalidLogin';else{const next=new URLSearchParams(location.search).get('next')||'/';location.href=next.startsWith('/')&&!next.startsWith('//')?next:'/';return;}error.textContent=t(errorKey);submit.disabled=false;submit.textContent=t('loginButton');});
+addEventListener('duet:languagechange',()=>{toggle.textContent=t(toggle.dataset.i18n);if(errorKey)error.textContent=t(errorKey);});
+</script></body></html>
