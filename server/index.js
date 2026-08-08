@@ -174,7 +174,11 @@ open "\$DEST" >/dev/null 2>&1 || true
         }
       : null;
     res.writeHead(200, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
-    return res.end(JSON.stringify({ authEnabled: auth.enabled(), authenticated: Boolean(session), user }));
+    return res.end(JSON.stringify({
+      authEnabled: auth.enabled(),
+      authenticated: Boolean(session),
+      user,
+    }));
   }
 
   if (auth.enabled() && !auth.sessionFromRequest(req) && !isPublicAsset(url.pathname)) {
