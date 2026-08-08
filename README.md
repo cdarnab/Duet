@@ -89,7 +89,7 @@ npm run build:extension
 
 1. Go to `chrome://extensions`
 2. Turn on **Developer mode**
-3. **Load unpacked** → select the unzipped folder (or `extension/` locally)
+3. **Load unpacked** → select `extension/` (or the unzipped download). Do not load a leftover `duet-extension/` folder.
 4. Click the Duet icon, enter your server URL and the room code, **Join room**
 
 Then just play something. The extension finds whatever video is on the page. When
