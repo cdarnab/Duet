@@ -212,6 +212,37 @@ test('a TV pause in open loop still pauses the browser side', async () => {
   }
 });
 
+test('resync pauses an open-loop TV and counts the room in', async () => {
+  await ensureServer();
+  const room = 'AGENTR';
+
+  const device = new MockDriver({ startPosition: 80, readPosition: false, readPaused: true, latencyMs: 40 });
+  const peer = browserPeer(room);
+  await sleep(300);
+
+  const agent = new Agent({ server: `http://127.0.0.1:${PORT}`, room, driver: device, pollMs: 400 });
+  await agent.start();
+  try {
+    peer.setState({ paused: false, position: 80 });
+    await sleep(1200);
+    device.paused = false;
+
+    const seen = [];
+    peer.ws.on('message', (raw) => {
+      const msg = JSON.parse(raw);
+      if (msg.type === 'state' || msg.type === 'cue') seen.push(msg.type);
+    });
+
+    peer.ws.send(JSON.stringify({ type: 'resync' }));
+    await sleep(900);
+    assert.strictEqual(device.paused, true, 'TV should pause on resync');
+    assert.ok(seen.includes('cue'), 'resync should count the room in');
+  } finally {
+    agent.stop();
+    peer.ws.close();
+  }
+});
+
 test('a device that cannot report position still follows play and pause', async () => {
   await ensureServer();
   const room = 'AGENTE';

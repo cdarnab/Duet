@@ -101,8 +101,7 @@ class Agent extends EventEmitter {
         this.state = msg.state;
         this.emit('roomstate', msg.state);
         if (msg.resync) {
-          this._deviceStable = false;
-          this._mirrorTransport().catch((err) => this.emit('error', err));
+          this._resync().catch((err) => this.emit('error', err));
         }
         break;
       case 'cue':
@@ -315,12 +314,34 @@ class Agent extends EventEmitter {
     this.holdingRoom = false;
   }
 
+  /**
+   * Open-loop TVs cannot seek. Resync means: pause everyone, then count in.
+   * That is the only snap that actually works on Nebula’s Netflix APK.
+   */
+  async _resync() {
+    this.emit('status', { connected: true });
+    this.emit('manual', { note: 'Resync: pausing both sides, then counting in' });
+    this.busy = true;
+    try {
+      this._markCommanded(true);
+      await this.driver.pause();
+      const at = this.expectedPosition();
+      this._send({ type: 'state', paused: true, position: at, rate: 1 });
+      this.state = { ...this.state, paused: true, position: at, rate: 1 };
+      this._send({ type: 'cue', inMs: 3200 });
+    } finally {
+      this.estimator.reset();
+      this.busy = false;
+    }
+  }
+
   /** Start on the same beat as everyone else, allowing for command latency. */
   _runCue(startAt) {
     const lead = this.driver.capabilities.commandLatencyMs || 0;
     const wait = startAt - this.serverNow() - lead;
     this.emit('cue', { startAt, wait });
     this._later(async () => {
+      this._markCommanded(false);
       await this.driver.play();
     }, Math.max(0, wait));
   }
