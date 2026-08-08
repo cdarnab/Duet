@@ -162,6 +162,21 @@ a.btn { display: inline-block; text-decoration: none; text-align: center; }
 .btn.danger { color: var(--rose); border-color: #5a3040; background: #1a1016; }
 .btn.danger:hover { border-color: var(--rose); }
 .btn:focus-visible, input:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.btn:disabled, .btn[disabled] { opacity: 0.55; cursor: default; }
+
+.install-cmd {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--haze);
+  background: #070a13;
+  color: var(--lamp);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 .invite-form {
   display: flex;
