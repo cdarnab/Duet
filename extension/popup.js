@@ -162,7 +162,7 @@ $('leave').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'l
 $('cue').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'cue' }));
 $('resync').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'resync' }, (res) => {
-    $('status-text').textContent = res?.connected ? 'Resync sent' : 'Join a room first';
+    $('status-text').textContent = res?.connected ? 'Pausing both — counting in' : 'Join a room first';
   });
 });
 

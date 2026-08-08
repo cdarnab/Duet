@@ -156,6 +156,23 @@ class RoomStore {
     return validRoomCode(key) ? this.rooms.get(key) : undefined;
   }
 
+  /** Rooms this signed-in person created, busiest then newest first. */
+  listByCreator(user) {
+    if (!user) return [];
+    return [...this.rooms.values()]
+      .filter((room) => {
+        if (!room.creator) return false;
+        if (user.id && room.creator.userId === user.id) return true;
+        if (user.email && room.creator.email && user.email === room.creator.email) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const members = b.size - a.size;
+        if (members) return members;
+        return b.createdAt - a.createdAt;
+      });
+  }
+
   /** Drop empty rooms after a grace period so a reload doesn't lose the room. */
   sweep(maxIdleMs = 1000 * 60 * 30, now = Date.now()) {
     let dropped = 0;

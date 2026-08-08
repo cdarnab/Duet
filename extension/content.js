@@ -284,6 +284,18 @@
       const left = startAt - serverNow();
       if (left <= 0) {
         el.textContent = 'Now';
+        hold(1500);
+        setPaused(false);
+        if (video) {
+          state = {
+            ...state,
+            paused: false,
+            position: video.currentTime,
+            atServerTime: serverNow(),
+            seq: Math.max(state.seq, 0) + 1,
+          };
+          push();
+        }
         setTimeout(() => (el.style.opacity = '0'), 800);
         return;
       }

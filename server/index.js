@@ -8,6 +8,7 @@ const { WebSocketServer } = require('ws');
 
 const { RoomStore, Member, validRoomCode, normalizeRoomCode } = require('./rooms');
 const auth = require('./auth');
+const DuetSync = require('../shared/sync');
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -62,13 +63,23 @@ function sanitizeText(value, max) {
 
 function isPublicAsset(pathname) {
   return (
+    pathname === '/' ||
+    pathname === '/index.html' ||
     pathname === '/app.css' ||
+    pathname === '/i18n.js' ||
+    pathname === '/home.js' ||
+    pathname === '/extension-status.js' ||
     pathname === '/favicon.ico' ||
+    pathname === '/favicon-16.png' ||
+    pathname === '/favicon-32.png' ||
+    pathname === '/apple-touch-icon.png' ||
     pathname === '/version.json' ||
     pathname === '/duet-extension.zip' ||
     pathname === '/install-duet.sh' ||
     pathname === '/install-duet.command' ||
+    pathname === '/api/session' ||
     pathname === '/api/extension/files' ||
+    pathname.startsWith('/assets/') ||
     pathname.startsWith('/extension-dist/')
   );
 }
@@ -153,6 +164,23 @@ open "\$DEST" >/dev/null 2>&1 || true
 
   if (await auth.handleHttp(req, res, url, { securityHeaders })) return;
 
+  if (url.pathname === '/api/session' && (req.method === 'GET' || req.method === 'HEAD')) {
+    const session = auth.sessionFromRequest(req);
+    const user = session
+      ? {
+          email: session.user.email,
+          name: auth.displayName(session.user),
+          owner: session.user.email === auth.ownerEmail(),
+        }
+      : null;
+    res.writeHead(200, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+    return res.end(JSON.stringify({
+      authEnabled: auth.enabled(),
+      authenticated: Boolean(session),
+      user,
+    }));
+  }
+
   if (auth.enabled() && !auth.sessionFromRequest(req) && !isPublicAsset(url.pathname)) {
     if (url.pathname.startsWith('/api/')) {
       res.writeHead(401, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
@@ -164,6 +192,26 @@ open "\$DEST" >/dev/null 2>&1 || true
       location: safe ? `/login?next=${encodeURIComponent(next)}` : '/login',
     }));
     return res.end();
+  }
+
+  if (url.pathname === '/api/rooms/mine' && (req.method === 'GET' || req.method === 'HEAD')) {
+    const session = auth.sessionFromRequest(req);
+    if (auth.enabled() && !session) {
+      res.writeHead(401, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+      return res.end(JSON.stringify({ error: 'auth_required' }));
+    }
+    const rooms = session ? store.listByCreator(session.user) : [];
+    res.writeHead(200, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+    return res.end(
+      JSON.stringify({
+        rooms: rooms.map((room) => ({
+          code: room.code,
+          createdAt: room.createdAt,
+          members: room.size,
+          creator: room.publicCreator(),
+        })),
+      })
+    );
   }
 
   if (url.pathname.startsWith('/api/room/new')) {
@@ -345,11 +393,16 @@ wss.on('connection', (socket, req) => {
         return;
       }
 
-      /* Snap every player back to the room clock — not just the requester. */
-      case 'resync':
+      /* Pause everyone, then count in. Seek-only resync is a no-op on Fire/Nebula. */
+      case 'resync': {
         if (!room) return;
-        broadcast(room, { type: 'state', state: room.state, serverTime: Date.now(), resync: true });
+        const at = DuetSync.projected(room.state, Date.now());
+        const state = room.applyState({ paused: true, position: at, rate: 1 }, member.id);
+        broadcast(room, { type: 'state', state, serverTime: Date.now(), resync: true });
+        const startAt = Date.now() + 3200;
+        broadcast(room, { type: 'cue', startAt, from: member.id, position: state.position });
         return;
+      }
 
       /* Position heartbeat — powers the live drift readout on every surface. */
       case 'tick': {

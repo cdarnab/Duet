@@ -8,7 +8,14 @@
     "dev": "node --watch server/index.js",
     "test": "node --test test/*.test.js",
     "build:extension": "node scripts/build-extension.js",
-    "agent": "node agent/index.js"
+    "agent": "node agent/index.js",
+    "capsule": "node agent/index.js --device nebula",
+    "capsule:login": "node agent/index.js --login",
+    "capsule:logout": "node agent/index.js --logout",
+    "roku": "node agent/index.js --device roku",
+    "roku:login": "node agent/index.js --login",
+    "firetv": "node agent/index.js --device firetv",
+    "firetv:login": "node agent/index.js --login"
   },
   "engines": {
     "node": ">=20"

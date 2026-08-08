@@ -176,53 +176,85 @@ keys on the remote shift the room timecode; OK starts a countdown.
 
 **Roku at your house + partner on a MacBook (Netflix).** Casting will not work.
 Use the native Netflix app on the Roku and the extension on the MacBook, same
-room, same title.
+room, same title. Create the room on your phone if you want; the TV helper only
+needs to be on the same Wi-Fi as the Roku.
 
-1. Partner: Chrome + Duet extension, log in, create or join the room, open Netflix.
-2. You: on a computer that is on the **same Wi-Fi as the Roku** (a laptop, Pi, etc.):
+1. You or your partner: log in at duet.arnabbanik.com (phone is fine) and **Create a room**.
+2. Partner: Chrome + Duet extension, join that room, open the same Netflix title.
+3. On a computer on the **same Wi-Fi as the Roku** (this Mac, a Pi, etc.):
 
 ```bash
 cd /path/to/duet
-npm install
-node agent --discover
-node agent --room YOURCODE --device roku --host ROKU_IP \
-  --server https://duet.arnabbanik.com \
-  --email you@example.com --password 'your-password'
+npm run roku:login          # once — same Keychain login as Capsule
+npm run roku                # or double-click scripts/duet-roku.command
 ```
 
-3. On the Roku, open Netflix and the same movie/episode. Pause it.
-4. Partner clicks **Count us in** in the Duet popup. The agent presses play on the
-   Roku at the same beat.
+It finds the Roku, joins *your* room if you created it, otherwise asks for the code.
+4. On the Roku, open Netflix and the same movie/episode. Pause it.
+5. Partner clicks **Count us in**. The agent presses play on the Roku at the same beat.
 
-Netflix on Roku does not report a playhead, so Duet can keep play/pause and the
-countdown in sync automatically, but it cannot measure drift. If you separate, use
-**Resync** / **Count us in** again, or skip on the Roku remote. The agent must keep
-running for the whole movie.
+Two Rokus (two houses): each house runs `npm run roku` on a computer on that TV’s
+Wi-Fi, same room code. Still open the same title on both Netflix apps.
+
+Netflix on Roku usually has pause/play state but no playhead, so countdown and
+transport stay in sync; drift is not auto-corrected. **Resync** pauses both and
+counts in again. Leave the agent window open for the movie.
 
 If you have no extra computer next to the Roku, skip the agent: open
 `https://duet.arnabbanik.com/tv.html#YOURCODE` on your phone and follow the cue
 console while Netflix plays on the Roku.
 
-**Nebula Capsule (Nebula Play → Netflix Installation Guide), no HDMI.** That
-Netflix is a phone APK. You pick the movie with Nebula Connect mouse mode; Duet
-cannot tap that UI. After the title is open and paused, a laptop on the same
-Wi-Fi can drive **play / pause / skip** with Android media keys (the same ones
-Bluetooth headphones use):
+**Fire TV / Toshiba Fire TV Edition + partner laptop.** Same idea as Roku: native
+Netflix on the TV, extension on the MacBook, helper Mac on the TV’s Wi-Fi.
+
+1. On the Fire TV: Settings → **My Fire TV** → About (click 7 times) → Developer
+   options → **ADB debugging** On → **ADB over network** On. Note the IP.
+   The first connect shows **Allow USB debugging?** on the TV — check
+   **Always allow from this computer**, then OK.
+2. Phone or laptop: create the Duet room.
+3. On a computer on that Wi-Fi:
 
 ```bash
-brew install android-platform-tools
-# On the Capsule: Settings → Developer options → Wireless debugging → note IP
-adb pair CAPSULE_IP:PAIRING_PORT    # once, if it asks for a code
-adb connect CAPSULE_IP:5555
-
-node agent --room YOURCODE --device nebula --host CAPSULE_IP \
-  --server https://duet.arnabbanik.com \
-  --email you@example.com --password 'your-password'
+brew install android-platform-tools   # once
+npm run firetv:login                  # once, same Keychain login
+npm run firetv                        # or double-click scripts/duet-firetv.command
+# if it asks, enter the Fire TV IP
 ```
 
+4. Open Netflix on the Fire TV (same title), pause it. If you accidentally hit
+   Home, the agent brings Netflix back before sending play/pause.
+5. Partner laptop: extension → **Count us in**. Laptop play/pause should pause
+   and resume the TV. Fire Netflix has no real playhead, so Duet will not skip.
+   If you drift, **Resync** (pause both, then count in). Reload the extension
+   (1.9.1) after this update.
+
+You want the agent to print **pause/play is visible**, not closed loop.
+
+**Nebula Capsule (Nebula Play → Netflix Installation Guide), no HDMI.** That
+Netflix is a phone APK. You pick the movie with Nebula Connect mouse mode; Duet
+cannot tap that UI. After the title is open and paused, run the agent **on this
+Mac** (same Wi-Fi as the Capsule). It drives **play / pause / skip** with Android
+media keys (the same ones Bluetooth headphones use).
+
+One-time setup: `brew install android-platform-tools`, then on the Capsule turn on
+**Wireless debugging** and accept the prompt. After that, from the Duet folder:
+
+```bash
+npm run capsule:login          # email + password once; stored in Keychain / ~/.duet
+npm run capsule                # or double-click scripts/duet-capsule.command
+```
+
+If you created the room in the extension, the agent joins that code automatically.
+If you’re joining someone else’s room, it asks for the code. Do not pass `--password`
+on the command line — that’s what `capsule:login` is for.
+
+Pause and play go both ways once the agent can see transport (MediaSession or
+`dumpsys audio`). Resync then matches that shared pause/play. Playhead drift still
+cannot be measured on this Netflix APK.
+
 Partner uses Chrome + the Duet extension on the same title, then **Count us in**.
-Do not screen-cast; DRM will black the picture. If ADB will not pair, use the
-phone cue console instead: `/tv.html#YOURCODE`.
+Leave the Capsule window open for the movie. Do not screen-cast; DRM will black the
+picture. If ADB will not connect, use the phone cue console: `/tv.html#YOURCODE`.
 
 **Voice and chat.** Open `/companion.html#YOURCODE` on your phone. That page carries
 peer-to-peer voice, notes, and the drift meter, and stays out of the way of the
@@ -237,7 +269,7 @@ it never uses peer-to-peer.
 ## Testing
 
 ```bash
-npm test                             # 51 tests, no network or hardware needed
+npm test                             # unit + integration tests, no network or hardware needed
 ./scripts/smoke.sh http://localhost:8080
 ```
 
@@ -297,6 +329,8 @@ web/tv.html            big-screen player and cue console
 agent/control.js       correction planner — skips plus timed pauses
 agent/estimator.js     smooths stale, rounded device readings
 agent/agent.js         the loop: read the TV, mirror transport, correct drift
+agent/launch.js        Capsule laptop login, room pick, ADB discovery
+agent/store.js         ~/.duet session + Keychain / file password
 agent/drivers/         roku (ECP), androidtv (ADB), appletv (pyatv), mock
 ```
 

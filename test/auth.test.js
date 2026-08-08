@@ -61,10 +61,13 @@ test('extension install assets are public', async () => {
   assert.match(await manifest.text(), /"manifest_version"/);
 });
 
-test('unauthenticated visitors are sent to login', async () => {
-  const res = await fetch(`${base()}/`, { redirect: 'manual' });
-  assert.strictEqual(res.status, 302);
-  assert.match(res.headers.get('location'), /^\/login(\?next=|$)/);
+test('the landing page is public but room surfaces require login', async () => {
+  const landing = await fetch(`${base()}/`, { redirect: 'manual' });
+  assert.strictEqual(landing.status, 200);
+  assert.match(await landing.text(), /Press play/);
+  const protectedPage = await fetch(`${base()}/companion.html`, { redirect: 'manual' });
+  assert.strictEqual(protectedPage.status, 302);
+  assert.match(protectedPage.headers.get('location'), /^\/login\?next=/);
 });
 
 test('room API requires a session', async () => {
@@ -117,26 +120,38 @@ test('owner setup, login, invite, and invited user can create a room', async () 
 
   const me = await fetch(`${base()}/api/me`, { headers: withCookie() });
   assert.strictEqual(me.status, 200);
-  assert.strictEqual((await me.json()).name, 'Sam');
+  const meBody = await me.json();
+  assert.strictEqual(meBody.name, 'Sam');
+  assert.strictEqual(meBody.canSetName, false);
 
   const renamed = await fetch(`${base()}/api/me`, {
     method: 'POST',
     headers: withCookie(),
     body: JSON.stringify({ name: 'Samira' }),
   });
-  assert.strictEqual(renamed.status, 200);
-  assert.strictEqual((await renamed.json()).name, 'Samira');
+  assert.strictEqual(renamed.status, 409);
+  assert.strictEqual((await renamed.json()).error, 'name_locked');
 
   const room = await fetch(`${base()}/api/room/new`, { headers: withCookie() });
   assert.strictEqual(room.status, 200);
   const body = await room.json();
   assert.match(body.code, /^[A-Z0-9]{6}$/);
-  assert.strictEqual(body.creator.name, 'Samira');
+  assert.strictEqual(body.creator.name, 'Sam');
   assert.match(body.joinUrl, /^\/r\/[A-Z0-9]{6}$/);
 
   const page = await fetch(`${base()}${body.joinUrl}`, { headers: withCookie() });
   assert.strictEqual(page.status, 200);
   assert.match(await page.text(), /Join this room/);
+
+  const mine = await fetch(`${base()}/api/rooms/mine`, { headers: withCookie() });
+  assert.strictEqual(mine.status, 200);
+  const listed = await mine.json();
+  assert.ok(listed.rooms.some((room) => room.code === body.code));
+});
+
+test('rooms/mine requires a session', async () => {
+  const res = await fetch(`${base()}/api/rooms/mine`);
+  assert.strictEqual(res.status, 401);
 });
 
 test('a device agent with a session can join a room', async () => {

@@ -282,14 +282,16 @@ test('resync broadcasts current room state to every member', async () => {
   await Promise.all([a.next((m) => m.type === 'state'), b.next((m) => m.type === 'state')]);
 
   b.send({ type: 'resync' });
-  const [ra, rb] = await Promise.all([
+  const [ra, rb, cue] = await Promise.all([
     a.next((m) => m.type === 'state' && m.resync),
     b.next((m) => m.type === 'state' && m.resync),
+    a.next((m) => m.type === 'cue'),
   ]);
   assert.strictEqual(ra.resync, true);
   assert.strictEqual(rb.resync, true);
-  assert.strictEqual(ra.state.paused, false);
+  assert.strictEqual(ra.state.paused, true);
   assert.ok(ra.state.position >= 90);
+  assert.ok(cue.startAt);
 
   a.close();
   b.close();

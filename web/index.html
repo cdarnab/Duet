@@ -3,171 +3,69 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Duet — watch together, apart</title>
+<meta name="description" content="Duet keeps two screens on the same frame, wherever you are." />
+<title>Duet — press play together</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="preload" as="image" href="/assets/hero-illustrated-1024.webp" media="(max-width:900px)" />
+<link rel="preload" as="image" href="/assets/hero-illustrated-2048.webp" media="(min-width:901px)" />
 <link rel="stylesheet" href="/app.css" />
 </head>
-<body>
-<main class="wrap">
-  <p class="eyebrow" id="who" style="display:none"></p>
-  <p class="eyebrow">Two rooms · One reel</p>
-  <h1>Press play <em>together</em>.</h1>
-  <p class="lede">Duet keeps two players on the same frame, down to a tenth of a second, on whatever you're already watching. You each stream from your own account. Duet only carries the timing.</p>
+<body class="home-page">
+<header class="site-header" data-header>
+  <a class="wordmark" href="/" aria-label="Duet home">DUET</a>
+  <nav class="site-nav" aria-label="Primary navigation">
+    <a href="#how" data-i18n="how">How it works</a>
+    <a href="/admin" data-owner-link hidden data-i18n="people">People</a>
+    <span class="nav-identity" data-user-label hidden></span>
+    <a href="/login" data-login-link data-i18n="login">Log in</a>
+    <button class="nav-link-button" type="button" data-logout hidden data-i18n="logout">Log out</button>
+    <div class="language-switch" role="group" aria-label="Language"><button type="button" data-lang="en">EN</button><button type="button" data-lang="bn">বাংলা</button></div>
+  </nav>
+</header>
 
-  <div class="card" id="ext-card">
-    <p class="eyebrow">Browser extension · <span id="ext-version">v1.8.0</span></p>
-    <h2 style="margin-top:6px">Get the extension</h2>
-    <p id="ext-status" class="lede">Checking this Mac…</p>
-    <div class="row">
-      <button class="btn primary" id="ext-action" type="button">Install Extension</button>
+<main>
+  <section class="hero">
+    <picture class="hero-media" aria-hidden="true">
+      <source media="(max-width:900px)" srcset="/assets/hero-illustrated-1024.webp" type="image/webp" />
+      <source srcset="/assets/hero-illustrated-1536.webp 1536w, /assets/hero-illustrated-2048.webp 2048w" type="image/webp" />
+      <img src="/assets/hero-illustrated-1536.jpg" alt="" fetchpriority="high" />
+    </picture>
+    <div class="hero-shade" aria-hidden="true"></div><div class="story-grain" aria-hidden="true"></div>
+    <span class="drift-leaf leaf-one" aria-hidden="true"></span><span class="drift-leaf leaf-two" aria-hidden="true"></span><span class="drift-leaf leaf-three" aria-hidden="true"></span>
+    <div class="hero-content">
+      <h1 data-i18n-html="hero">Press play <em>together</em>.</h1>
+      <p class="hero-lede" data-i18n="heroBody">Stay on the same frame—even when you're miles apart. You each stream from your own account; Duet only carries the timing.</p>
+      <div class="hero-actions"><button class="btn primary btn-large" id="create-hero" type="button" data-i18n="start">Start a room</button><button class="btn glass btn-large" type="button" data-open-join data-i18n="join">Join with a code</button></div>
+      <form class="join-drawer" id="hero-join" hidden>
+        <label for="code" data-i18n="roomCode">Room code</label>
+        <div class="join-drawer-row"><input id="code" type="text" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" data-i18n-placeholder="codePlaceholder" placeholder="Enter 6-letter code" /><button class="btn primary" id="join-companion" type="submit" data-i18n="console">Open console</button><button class="btn glass" id="join-tv" type="button" data-i18n="tv">Open on TV</button></div>
+        <p class="form-status" id="join-status" role="status"></p>
+      </form>
     </div>
-    <pre class="install-cmd" id="install-cmd" hidden></pre>
-    <p class="small" id="ext-hint">One click saves Duet on this Mac. Chrome still needs Load unpacked once.</p>
-    <ol class="small" id="ext-steps" style="margin-bottom:0; padding-left:1.2em">
-      <li>Click <strong>Install Extension</strong> and choose or create a folder named <strong>Duet</strong> (Documents is best)</li>
-      <li>Open <code>chrome://extensions</code> and turn on <strong>Developer mode</strong></li>
-      <li><strong>Load unpacked</strong> → that Duet folder → <code>extension</code></li>
-      <li>The popup should say <strong>Duet · <span class="ext-version-copy">1.8.0</span></strong></li>
+  </section>
+
+  <section class="story-section" id="how">
+    <div class="section-heading"><p class="eyebrow" data-i18n="how">How it works</p><h2 data-i18n="howTitle">One shared moment. Three simple steps.</h2><p class="section-lede" data-i18n="howBody">Duet works with what you already watch. Your video never passes through us.</p></div>
+    <ol class="story-steps">
+      <li><span class="step-number">01</span><div><h3 data-i18n="s1">Open what you already watch</h3><p data-i18n="s1b">Each person streams from their own account in Chrome. Duet never copies or relays the movie.</p></div></li>
+      <li><span class="step-number">02</span><div><h3 data-i18n="s2">Pair your screens</h3><p data-i18n="s2b">Use two laptops, a laptop and TV, or two TVs with the companion controls.</p></div></li>
+      <li><span class="step-number">03</span><div><h3 data-i18n="s3">Stay on the same frame</h3><p data-i18n="s3b">Play, pause, seek, and countdown cues keep both sides together down to a fraction of a second.</p></div></li>
     </ol>
-  </div>
+  </section>
 
-  <div class="card" id="profile" style="display:none">
-    <h2 style="margin-top:0">Your name</h2>
-    <p class="small">This is how you show up in the room and in chat.</p>
-    <input id="display-name" type="text" minlength="2" maxlength="24" autocomplete="nickname" />
-    <button class="btn" id="save-name" style="margin-top:10px">Save name</button>
-    <p class="small" id="name-status" style="margin:10px 0 0"></p>
-  </div>
-
-  <div class="card">
-    <h2 style="margin-top:0">Start a room</h2>
-    <div class="row">
-      <button class="btn primary" id="create">Create a room</button>
+  <section class="setup-section">
+    <div class="section-heading"><p class="eyebrow" data-i18n="setup">Your setup</p><h2 data-i18n="ready">Ready when you are.</h2><p class="section-lede" data-i18n="readyBody">Check the extension, choose your name, then create or join a room.</p></div>
+    <div class="setup-grid">
+      <article class="card setup-card" id="ext-card"><span class="card-index">01</span><p class="eyebrow"><span data-i18n="ext">Browser extension</span> · <span id="ext-version">v1.9.0</span></p><h3 data-i18n="extTitle">Get the extension</h3><p id="ext-status">Checking this Mac…</p><button class="btn primary wide" id="ext-action" type="button">Install extension</button><pre class="install-cmd" id="install-cmd" hidden></pre><details class="setup-details"><summary>Installation details</summary><p class="small" id="ext-hint">One click saves Duet on this Mac.</p><ol class="small" id="ext-steps"><li>Choose a folder named <strong>Duet</strong>.</li><li>Open <code>chrome://extensions</code> and enable Developer mode.</li><li>Load the saved extension folder.</li><li>The popup should show <strong>Duet · <span class="ext-version-copy">1.9.0</span></strong>.</li></ol></details></article>
+      <article class="card setup-card" id="profile" hidden><span class="card-index">02</span><h3 data-i18n="yourName">Your name</h3><p data-i18n="nameBody">This is how you appear in the room and chat. You only set it once.</p><label class="sr-only" for="display-name" data-i18n="yourName">Your name</label><input id="display-name" type="text" minlength="2" maxlength="24" autocomplete="nickname" /><button class="btn glass" id="save-name" type="button" data-i18n="save">Save name</button><p class="form-status" id="name-status"></p></article>
+      <article class="card setup-card"><span class="card-index">03</span><div class="room-action-block"><h3 data-i18n="createTitle">Start a room</h3><p data-i18n="createBody">You'll receive a six-letter code and a link to share.</p><button class="btn primary wide" id="create" type="button" data-i18n="create">Create a room</button><p class="form-status" id="create-status"></p></div><div class="room-action-block"><h3 data-i18n="joinTitle">Join a room</h3><p data-i18n="joinBody">Use the room code you received, then choose the screen you want to control.</p><button class="btn glass wide" type="button" data-open-join data-i18n="join">Join with a code</button></div></article>
     </div>
-    <p class="small" style="margin-bottom:0">You'll get a six-letter code and a link you can send by Messages or email.</p>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2 style="margin-top:0">Join a room</h2>
-    <input type="text" id="code" placeholder="6-letter code" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
-    <div class="row" style="margin-top:10px">
-      <button class="btn" id="join-companion">Open console</button>
-      <button class="btn" id="join-tv">Open on TV</button>
-    </div>
-    <p class="small" style="margin-bottom:0">The console is for your phone or laptop. TV mode is a big-screen view for a smart TV browser or a screen you've cast to.</p>
-  </div>
-
-  <h2>Which setup is yours?</h2>
-
-  <div class="card">
-    <p class="eyebrow">Laptop &amp; laptop</p>
-    <p style="margin:6px 0 0">Install the Duet extension on both browsers. It hooks into whatever video is on screen — Netflix, Prime, YouTube, Disney+, Max, Jellyfin, a local file — and keeps both sides in step. Nothing to configure per service.</p>
-  </div>
-
-  <div class="card">
-    <p class="eyebrow">Laptop &amp; TV — best result</p>
-    <p style="margin:6px 0 0">Run an HDMI cable from the TV person's laptop to the TV, or cast the browser tab. The extension does the syncing; the TV is just a bigger monitor. Every service works, because the browser is still the player.</p>
-  </div>
-
-  <div class="card">
-    <p class="eyebrow">Laptop &amp; native TV app</p>
-    <p style="margin:6px 0 0">A Netflix app on a smart TV can't be driven from outside — no app allows it. Open TV mode there instead and Duet runs a cue console: a shared 3-2-1 countdown, matching timecode, and a plain instruction like <em>skip back 4 seconds</em> when you drift. You press the buttons; Duet tells you exactly when.</p>
-  </div>
-
-  <p class="small" style="margin-top:26px">Duet never copies, relays, or re-streams video. Both of you need your own access to whatever you're watching.</p>
+  <section class="device-section"><div class="section-heading compact-heading"><h2 data-i18n="devices">Choose your screen setup</h2></div><div class="device-grid"><article class="device-card"><span class="device-mark">▰ ↔ ▰</span><h3 data-i18n="ll">Laptop ↔ Laptop</h3><p data-i18n="llb">Install the extension on both computers for automatic play, pause, and seek.</p></article><article class="device-card"><span class="device-mark">▰ ↔ ▭</span><h3 data-i18n="lt">Laptop ↔ TV</h3><p data-i18n="ltb">Use HDMI or cast a browser tab for the simplest full-screen setup.</p></article><article class="device-card"><span class="device-mark">▭ ↔ ▭</span><h3 data-i18n="tt">TV ↔ TV</h3><p data-i18n="ttb">Use the TV companion or local device helper for countdowns and corrections.</p></article></div><p class="privacy-note" data-i18n="privacy">Duet never copies, relays, or re-streams video. Both people need their own access to what they are watching.</p></section>
 </main>
-
-<script src="/extension-status.js"></script>
-<script>
-  const codeInput = document.getElementById('code');
-  const sanitizeRoom = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-  codeInput.addEventListener('input', () => {
-    codeInput.value = sanitizeRoom(codeInput.value);
-  });
-  codeInput.addEventListener('paste', (event) => {
-    event.preventDefault();
-    codeInput.value = sanitizeRoom((event.clipboardData || window.clipboardData).getData('text'));
-  });
-
-  document.getElementById('create').addEventListener('click', async () => {
-    const res = await fetch('/api/room/new');
-    if (res.status === 401) { location.href = '/login'; return; }
-    const { code } = await res.json();
-    location.href = `/r/${code}`;
-  });
-
-  const go = (page) => () => {
-    const code = codeInput.value.trim();
-    if (code.length < 4) {
-      codeInput.focus();
-      codeInput.placeholder = 'Enter the six-letter code';
-      return;
-    }
-    location.href = `/${page}#${code}`;
-  };
-  document.getElementById('join-companion').addEventListener('click', go('companion.html'));
-  document.getElementById('join-tv').addEventListener('click', go('tv.html'));
-
-  fetch('/api/me').then(async (res) => {
-    if (!res.ok) return;
-    const me = await res.json();
-    const who = document.getElementById('who');
-    who.style.display = 'block';
-    who.innerHTML = '';
-    const label = document.createElement('span');
-    label.textContent = me.name ? `${me.name} · ${me.email}` : me.email;
-    who.appendChild(label);
-    const profile = document.getElementById('profile');
-    profile.style.display = 'block';
-    document.getElementById('display-name').value = me.name || '';
-    if (me.owner) {
-      who.appendChild(document.createTextNode(' · '));
-      const admin = document.createElement('a');
-      admin.href = '/admin';
-      admin.textContent = 'People';
-      who.appendChild(admin);
-    }
-    who.appendChild(document.createTextNode(' · '));
-    const logout = document.createElement('a');
-    logout.href = '#';
-    logout.textContent = 'Log out';
-    logout.addEventListener('click', (event) => {
-      event.preventDefault();
-      fetch('/logout', { method: 'POST' }).finally(() => { location.href = '/login'; });
-    });
-    who.appendChild(logout);
-  }).catch(() => {});
-
-  document.getElementById('save-name').addEventListener('click', async () => {
-    const status = document.getElementById('name-status');
-    status.textContent = '';
-    const res = await fetch('/api/me', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: document.getElementById('display-name').value }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      status.textContent = 'Use 2–24 letters or numbers.';
-      return;
-    }
-    status.textContent = 'Saved.';
-    const who = document.getElementById('who');
-    if (who.firstChild) who.firstChild.textContent = `${body.name} · ${body.email}`;
-  });
-
-  fetch('/version.json')
-    .then((r) => r.json())
-    .then((info) => {
-      if (!info || !info.version) return;
-      window.DuetExtensionStatus.refresh(info);
-      document.getElementById('ext-action').addEventListener('click', () => {
-        window.DuetExtensionStatus.runInstall(location.origin, info);
-      });
-    })
-    .catch(() => {});
-</script>
+<script src="/i18n.js"></script><script src="/extension-status.js"></script><script src="/home.js"></script>
 </body>
 </html>

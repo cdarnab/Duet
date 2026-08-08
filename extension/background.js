@@ -256,9 +256,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   }
   if (msg.type === 'resync') {
     send({ type: 'resync' });
-    const payload = { type: 'state', state: roomState, resync: true, offset: clock.offset, selfId };
-    fanout(payload);
-    pingTabs({ type: 'resync', state: roomState });
     reply({ ok: true, connected });
     return true;
   }
