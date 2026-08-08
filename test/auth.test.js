@@ -113,3 +113,94 @@ test('owner setup, login, invite, and invited user can create a room', async () 
   const body = await room.json();
   assert.match(body.code, /^[A-Z0-9]{6}$/);
 });
+
+test('owner can disable, reset, and delete a member', async () => {
+  cookie = '';
+  const login = await fetch(`${base()}/login`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ email: 'owner@example.com', password: 'super-secret-password' }),
+  });
+  assert.strictEqual(login.status, 200);
+  takeCookie(login);
+
+  const directory = await fetch(`${base()}/api/invites`, { headers: withCookie() });
+  assert.strictEqual(directory.status, 200);
+  const listed = await directory.json();
+  const member = listed.users.find((user) => user.email === 'friend@example.com');
+  assert.ok(member?.id);
+  assert.strictEqual(member.disabled, false);
+
+  const owner = listed.users.find((user) => user.role === 'owner');
+  const blockOwner = await fetch(`${base()}/api/users/${owner.id}/disable`, {
+    method: 'POST',
+    headers: withCookie(),
+  });
+  assert.strictEqual(blockOwner.status, 400);
+
+  const disable = await fetch(`${base()}/api/users/${member.id}/disable`, {
+    method: 'POST',
+    headers: withCookie(),
+  });
+  assert.strictEqual(disable.status, 200);
+  assert.strictEqual((await disable.json()).user.disabled, true);
+
+  const memberLogin = await fetch(`${base()}/login`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ email: 'friend@example.com', password: 'another-strong-pw' }),
+  });
+  assert.strictEqual(memberLogin.status, 403);
+
+  const enable = await fetch(`${base()}/api/users/${member.id}/enable`, {
+    method: 'POST',
+    headers: withCookie(),
+  });
+  assert.strictEqual(enable.status, 200);
+
+  const reset = await fetch(`${base()}/api/users/${member.id}/reset`, {
+    method: 'POST',
+    headers: withCookie(),
+  });
+  assert.strictEqual(reset.status, 200);
+  const resetBody = await reset.json();
+  assert.match(resetBody.url, /^\/reset\//);
+
+  cookie = '';
+  const acceptReset = await fetch(`${base()}${resetBody.url}`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ password: 'brand-new-password' }),
+  });
+  assert.strictEqual(acceptReset.status, 200);
+  takeCookie(acceptReset);
+
+  const me = await fetch(`${base()}/api/me`, { headers: withCookie() });
+  assert.strictEqual(me.status, 200);
+  assert.strictEqual((await me.json()).email, 'friend@example.com');
+
+  const oldPassword = await fetch(`${base()}/login`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ email: 'friend@example.com', password: 'another-strong-pw' }),
+  });
+  assert.strictEqual(oldPassword.status, 401);
+
+  cookie = '';
+  const ownerAgain = await fetch(`${base()}/login`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ email: 'owner@example.com', password: 'super-secret-password' }),
+  });
+  takeCookie(ownerAgain);
+
+  const remove = await fetch(`${base()}/api/users/${member.id}`, {
+    method: 'DELETE',
+    headers: withCookie(),
+  });
+  assert.strictEqual(remove.status, 200);
+
+  const after = await fetch(`${base()}/api/invites`, { headers: withCookie() });
+  const afterBody = await after.json();
+  assert.ok(!afterBody.users.some((user) => user.email === 'friend@example.com'));
+});
