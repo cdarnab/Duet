@@ -166,6 +166,26 @@ open "\$DEST" >/dev/null 2>&1 || true
     return res.end();
   }
 
+  if (url.pathname === '/api/rooms/mine' && (req.method === 'GET' || req.method === 'HEAD')) {
+    const session = auth.sessionFromRequest(req);
+    if (auth.enabled() && !session) {
+      res.writeHead(401, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+      return res.end(JSON.stringify({ error: 'auth_required' }));
+    }
+    const rooms = session ? store.listByCreator(session.user) : [];
+    res.writeHead(200, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+    return res.end(
+      JSON.stringify({
+        rooms: rooms.map((room) => ({
+          code: room.code,
+          createdAt: room.createdAt,
+          members: room.size,
+          creator: room.publicCreator(),
+        })),
+      })
+    );
+  }
+
   if (url.pathname.startsWith('/api/room/new')) {
     const session = auth.sessionFromRequest(req);
     const creator = session

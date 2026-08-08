@@ -205,24 +205,25 @@ console while Netflix plays on the Roku.
 
 **Nebula Capsule (Nebula Play → Netflix Installation Guide), no HDMI.** That
 Netflix is a phone APK. You pick the movie with Nebula Connect mouse mode; Duet
-cannot tap that UI. After the title is open and paused, a laptop on the same
-Wi-Fi can drive **play / pause / skip** with Android media keys (the same ones
-Bluetooth headphones use):
+cannot tap that UI. After the title is open and paused, run the agent **on this
+Mac** (same Wi-Fi as the Capsule). It drives **play / pause / skip** with Android
+media keys (the same ones Bluetooth headphones use).
+
+One-time setup: `brew install android-platform-tools`, then on the Capsule turn on
+**Wireless debugging** and accept the prompt. After that, from the Duet folder:
 
 ```bash
-brew install android-platform-tools
-# On the Capsule: Settings → Developer options → Wireless debugging → note IP
-adb pair CAPSULE_IP:PAIRING_PORT    # once, if it asks for a code
-adb connect CAPSULE_IP:5555
-
-node agent --room YOURCODE --device nebula --host CAPSULE_IP \
-  --server https://duet.arnabbanik.com \
-  --email you@example.com --password 'your-password'
+npm run capsule:login          # email + password once; stored in Keychain / ~/.duet
+npm run capsule                # or double-click scripts/duet-capsule.command
 ```
 
+If you created the room in the extension, the agent joins that code automatically.
+If you’re joining someone else’s room, it asks for the code. Do not pass `--password`
+on the command line — that’s what `capsule:login` is for.
+
 Partner uses Chrome + the Duet extension on the same title, then **Count us in**.
-Do not screen-cast; DRM will black the picture. If ADB will not pair, use the
-phone cue console instead: `/tv.html#YOURCODE`.
+Leave the Capsule window open for the movie. Do not screen-cast; DRM will black the
+picture. If ADB will not connect, use the phone cue console: `/tv.html#YOURCODE`.
 
 **Voice and chat.** Open `/companion.html#YOURCODE` on your phone. That page carries
 peer-to-peer voice, notes, and the drift meter, and stays out of the way of the
@@ -237,7 +238,7 @@ it never uses peer-to-peer.
 ## Testing
 
 ```bash
-npm test                             # 51 tests, no network or hardware needed
+npm test                             # unit + integration tests, no network or hardware needed
 ./scripts/smoke.sh http://localhost:8080
 ```
 
@@ -297,6 +298,8 @@ web/tv.html            big-screen player and cue console
 agent/control.js       correction planner — skips plus timed pauses
 agent/estimator.js     smooths stale, rounded device readings
 agent/agent.js         the loop: read the TV, mirror transport, correct drift
+agent/launch.js        Capsule laptop login, room pick, ADB discovery
+agent/store.js         ~/.duet session + Keychain / file password
 agent/drivers/         roku (ECP), androidtv (ADB), appletv (pyatv), mock
 ```
 
