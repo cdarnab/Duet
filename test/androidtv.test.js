@@ -91,12 +91,14 @@ test('firetv driver stays open-loop and uses the Fire play/pause key', async () 
   assert.strictEqual(driver.flavor, 'firetv');
   assert.strictEqual(driver.capabilities.canJump, false);
   assert.strictEqual(driver.capabilities.readPaused, true);
+  assert.strictEqual(driver.capabilities.publishPaused, false);
   assert.deepStrictEqual(await driver.position(), { position: null, paused: false });
   await driver.pause();
   assert.deepStrictEqual(await driver.position(), { position: null, paused: true });
   await driver.play();
   assert.deepStrictEqual(await driver.position(), { position: null, paused: false });
-  assert.ok(calls.some((c) => c.includes('keyevent 85')));
+  const keys = calls.filter((c) => c.includes('keyevent 85'));
+  assert.strictEqual(keys.length, 2, 'one play/pause key per command, not a toggle fight');
   assert.ok(!calls.some((c) => c.includes('media dispatch')));
   assert.ok(!calls.some((c) => /keyevent 12[67]/.test(c)));
 });

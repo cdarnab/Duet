@@ -231,6 +231,7 @@ class Agent extends EventEmitter {
 
   _shouldPublishTransport(reading) {
     if (!reading || typeof reading.paused !== 'boolean') return false;
+    if (this.driver.capabilities.publishPaused === false) return false;
     if (Date.now() < (this._cueUntil || 0)) return false;
     if (Date.now() < (this._commandUntil || 0)) return false;
     if (!this._deviceStable) return false;
@@ -255,7 +256,8 @@ class Agent extends EventEmitter {
 
   _markCommanded(paused) {
     this._assumedPaused = paused;
-    this._commandUntil = Date.now() + 1500;
+    const hold = this.driver.capabilities.commandHoldMs || 1500;
+    this._commandUntil = Date.now() + hold;
     this._deviceStable = false;
     this._stableSince = 0;
   }
@@ -265,12 +267,22 @@ class Agent extends EventEmitter {
     if (this.busy || this.holdingRoom || this.stopped || this.state.seq < 0) return;
     if (Date.now() < (this._cueUntil || 0)) return;
     if (this.state.paused === this._assumedPaused) return;
-    this._markCommanded(this.state.paused);
-    await (this.state.paused ? this.driver.pause() : this.driver.play());
+    this.busy = true;
+    try {
+      for (let i = 0; i < 2; i++) {
+        if (this.state.paused === this._assumedPaused) break;
+        const want = this.state.paused;
+        this._markCommanded(want);
+        await (want ? this.driver.pause() : this.driver.play());
+      }
+    } finally {
+      this.busy = false;
+    }
   }
 
   async _mirrorTransport(reading) {
     if (Date.now() < (this._cueUntil || 0)) return;
+    if (Date.now() < (this._commandUntil || 0)) return;
     const state = reading || (await this.driver.position());
     if (!state || typeof state.paused !== 'boolean') {
       // Blind: assume the device follows whatever we last told it.
