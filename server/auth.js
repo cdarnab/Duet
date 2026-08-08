@@ -108,7 +108,7 @@ function parseCookies(req) {
 function cookieFlags(req) {
   const proto = String(req.headers['x-forwarded-proto'] || '');
   const secure = proto === 'https' || Boolean(req.socket && req.socket.encrypted);
-  return `HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_MS / 1000)}${secure ? '; Secure' : ''}`;
+  return `HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(SESSION_MS / 1000)}${secure ? '; Secure' : ''}`;
 }
 
 function clientIp(req) {
@@ -312,7 +312,7 @@ async function handleHttp(req, res, url, { securityHeaders }) {
   if (pathname === '/logout') {
     if (req.method !== 'POST' || !sameOrigin(req)) return json(res, securityHeaders, 403, { error: 'forbidden' });
     destroySession(parseCookies(req)[COOKIE]);
-    res.setHeader('set-cookie', `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+    res.setHeader('set-cookie', `${COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     return redirect(res, securityHeaders, '/login');
   }
 
