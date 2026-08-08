@@ -8,6 +8,17 @@ function makeCode(len = 6) {
   return out;
 }
 
+function normalizeRoomCode(code) {
+  return String(code || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8);
+}
+
+function validRoomCode(code) {
+  return /^[A-Z0-9]{4,8}$/.test(normalizeRoomCode(code));
+}
+
 class Member {
   constructor(id, socket) {
     this.id = id;
@@ -102,14 +113,15 @@ class RoomStore {
 
   /** Join-or-create, so a shared link always works even after a server restart. */
   ensure(code) {
-    const key = String(code || '').toUpperCase().trim();
-    if (!key) return this.create();
+    const key = normalizeRoomCode(code);
+    if (!validRoomCode(key)) return null;
     if (!this.rooms.has(key)) this.rooms.set(key, new Room(key));
     return this.rooms.get(key);
   }
 
   get(code) {
-    return this.rooms.get(String(code || '').toUpperCase().trim());
+    const key = normalizeRoomCode(code);
+    return validRoomCode(key) ? this.rooms.get(key) : undefined;
   }
 
   /** Drop empty rooms after a grace period so a reload doesn't lose the room. */
@@ -125,4 +137,4 @@ class RoomStore {
   }
 }
 
-module.exports = { Room, RoomStore, Member, makeCode };
+module.exports = { Room, RoomStore, Member, makeCode, normalizeRoomCode, validRoomCode };
