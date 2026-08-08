@@ -42,6 +42,25 @@ test.after(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('extension install assets are public', async () => {
+  const version = await fetch(`${base()}/version.json`);
+  assert.strictEqual(version.status, 200);
+  const info = await version.json();
+  assert.match(info.version, /^\d+\.\d+\.\d+$/);
+
+  const script = await fetch(`${base()}/install-duet.sh`);
+  assert.strictEqual(script.status, 200);
+  assert.match(await script.text(), /Library\/Application Support\/Duet\/extension/);
+
+  const files = await fetch(`${base()}/api/extension/files`);
+  assert.strictEqual(files.status, 200);
+  const listing = await files.json();
+  assert.ok(listing.files.includes('manifest.json'));
+  const manifest = await fetch(`${base()}/extension-dist/manifest.json`);
+  assert.strictEqual(manifest.status, 200);
+  assert.match(await manifest.text(), /"manifest_version"/);
+});
+
 test('unauthenticated visitors are sent to login', async () => {
   const res = await fetch(`${base()}/`, { redirect: 'manual' });
   assert.strictEqual(res.status, 302);

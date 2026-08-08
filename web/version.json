@@ -1,5 +1,7 @@
 {
   "name": "Duet — watch together",
-  "version": "1.7.0",
-  "zip": "/duet-extension.zip"
+  "version": "1.8.0",
+  "zip": "/duet-extension.zip",
+  "id": "efcoldbcocoablbhagphlhamcoahjgfm",
+  "installDir": "~/Library/Application Support/Duet/extension"
 }

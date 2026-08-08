@@ -175,6 +175,14 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => ports.delete(port));
 });
 
+chrome.runtime.onMessageExternal.addListener((msg, _sender, reply) => {
+  if (msg && msg.type === 'duetPing') {
+    reply({ ok: true, version: chrome.runtime.getManifest().version, name: chrome.runtime.getManifest().name });
+    return true;
+  }
+  return false;
+});
+
 /* ------------------------------------------------------------------ popup */
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {

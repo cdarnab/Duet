@@ -61,7 +61,30 @@ function sanitizeText(value, max) {
 }
 
 function isPublicAsset(pathname) {
-  return pathname === '/app.css' || pathname === '/favicon.ico';
+  return (
+    pathname === '/app.css' ||
+    pathname === '/favicon.ico' ||
+    pathname === '/version.json' ||
+    pathname === '/duet-extension.zip' ||
+    pathname === '/install-duet.sh' ||
+    pathname === '/install-duet.command' ||
+    pathname === '/api/extension/files' ||
+    pathname.startsWith('/extension-dist/')
+  );
+}
+
+const EXT_ROOT = path.join(ROOT, 'extension');
+
+function listExtensionFiles(dir, rel = '') {
+  const out = [];
+  for (const name of fs.readdirSync(dir)) {
+    if (name.startsWith('.')) continue;
+    const full = path.join(dir, name);
+    const relPath = rel ? `${rel}/${name}` : name;
+    if (fs.statSync(full).isDirectory()) out.push(...listExtensionFiles(full, relPath));
+    else out.push(relPath);
+  }
+  return out.sort();
 }
 
 async function handleRequest(req, res) {
@@ -70,6 +93,62 @@ async function handleRequest(req, res) {
   if (url.pathname === '/health') {
     res.writeHead(200, securityHeaders({ 'content-type': 'application/json' }));
     return res.end(JSON.stringify({ ok: true, rooms: store.rooms.size, uptime: process.uptime() }));
+  }
+
+  if (url.pathname === '/api/extension/files') {
+    const manifest = JSON.parse(fs.readFileSync(path.join(EXT_ROOT, 'manifest.json'), 'utf8'));
+    res.writeHead(200, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+    return res.end(JSON.stringify({ version: manifest.version, files: listExtensionFiles(EXT_ROOT) }));
+  }
+
+  if (url.pathname.startsWith('/extension-dist/')) {
+    const rel = decodeURIComponent(url.pathname.slice('/extension-dist/'.length)).replace(/^\/+/, '');
+    if (!rel || rel.includes('..') || path.isAbsolute(rel)) {
+      res.writeHead(403, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
+      return res.end('Forbidden');
+    }
+    const full = path.join(EXT_ROOT, rel);
+    if (!full.startsWith(EXT_ROOT + path.sep)) {
+      res.writeHead(403, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
+      return res.end('Forbidden');
+    }
+    if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+      res.writeHead(404, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
+      return res.end('Not found');
+    }
+    const headers = securityHeaders({ 'content-type': MIME[path.extname(full)] || 'application/octet-stream' });
+    res.writeHead(200, headers);
+    return res.end(fs.readFileSync(full));
+  }
+
+  if (url.pathname === '/install-duet.sh' || url.pathname === '/install-duet.command') {
+    const host = String(req.headers.host || 'duet.arnabbanik.com').split(',')[0].trim();
+    const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    const base = `${proto}://${host}`;
+    const script = `#!/bin/bash
+set -euo pipefail
+DEST="\${HOME}/Library/Application Support/Duet/extension"
+mkdir -p "\$DEST"
+TMP="\$(mktemp -t duet-ext)"
+echo "Installing Duet to \$DEST"
+curl -fsSL "${base}/duet-extension.zip" -o "\$TMP.zip"
+unzip -o "\$TMP.zip" -d "\$DEST"
+rm -f "\$TMP.zip"
+echo
+echo "Installed. In Chrome:"
+echo "  1. Open chrome://extensions"
+echo "  2. Turn on Developer mode"
+echo "  3. Load unpacked → \$DEST"
+echo "If Duet was already loaded from that folder, click Reload."
+open "\$DEST" >/dev/null 2>&1 || true
+`;
+    res.writeHead(200, securityHeaders({
+      'content-type': 'text/x-shellscript; charset=utf-8',
+      'content-disposition': url.pathname.endsWith('.command')
+        ? 'attachment; filename="Install Duet Extension.command"'
+        : 'inline; filename="install-duet.sh"',
+    }));
+    return res.end(script);
   }
 
   if (await auth.handleHttp(req, res, url, { securityHeaders })) return;

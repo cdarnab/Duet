@@ -9,9 +9,22 @@ const root = path.join(__dirname, '..');
 fs.copyFileSync(path.join(root, 'shared/sync.js'), path.join(root, 'extension/sync.js'));
 
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'extension/manifest.json'), 'utf8'));
+
+function extensionIdFromKey(b64) {
+  if (!b64) return '';
+  const hex = require('crypto').createHash('sha256').update(Buffer.from(b64, 'base64')).digest('hex').slice(0, 32);
+  return hex.replace(/./g, (c) => String.fromCharCode(97 + parseInt(c, 16)));
+}
+
 fs.writeFileSync(
   path.join(root, 'web', 'version.json'),
-  JSON.stringify({ name: manifest.name, version: manifest.version, zip: '/duet-extension.zip' }, null, 2) + '\n'
+  JSON.stringify({
+    name: manifest.name,
+    version: manifest.version,
+    zip: '/duet-extension.zip',
+    id: extensionIdFromKey(manifest.key),
+    installDir: '~/Library/Application Support/Duet/extension',
+  }, null, 2) + '\n'
 );
 
 const out = path.join(root, 'duet-extension.zip');
