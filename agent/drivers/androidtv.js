@@ -21,6 +21,30 @@ const KEY = {
   rewind: 89,
 };
 
+function parseAdbDevices(text) {
+  const devices = [];
+  for (const line of String(text).split(/\r?\n/)) {
+    const match = /^(\S+)\s+(device|offline|unauthorized|connecting)\b(.*)$/.exec(line.trim());
+    if (!match) continue;
+    devices.push({ serial: match[1], status: match[2], extra: String(match[3] || '').trim() });
+  }
+  return devices;
+}
+
+function pickAdbSerial(devices) {
+  const live = (devices || []).filter(
+    (d) => d.status === 'device' && !/^emulator-/.test(d.serial)
+  );
+  if (!live.length) return null;
+  const mdns = live.find((d) => d.serial.includes('_adb-tls-connect'));
+  return (mdns || live[0]).serial;
+}
+
+async function listAdbDevices(adb = 'adb') {
+  const { stdout } = await run(adb, ['devices', '-l'], { timeout: 8000 });
+  return parseAdbDevices(stdout);
+}
+
 /** Parse dumpsys media_session. Prefer a Netflix session when several exist. */
 function parseMediaSession(dump, prefer = /netflix/i) {
   if (!dump) return null;
@@ -48,10 +72,12 @@ function parseMediaSession(dump, prefer = /netflix/i) {
 }
 
 class AndroidTvDriver {
-  constructor({ host, port = 5555, adb = 'adb', jumpBack = 10, jumpForward = 10, flavor = 'androidtv' }) {
+  constructor({ host, port = 5555, serial, adb = 'adb', jumpBack = 10, jumpForward = 10, flavor = 'androidtv' }) {
     this.name = flavor === 'nebula' ? 'nebula' : 'androidtv';
     this.flavor = flavor === 'nebula' ? 'nebula' : 'androidtv';
-    this.serial = `${host}:${port}`;
+    const mdns = String(serial || host || '').includes('_adb-tls-connect');
+    this.serial = serial || (mdns ? String(host) : `${host}:${port}`);
+    this.skipConnect = Boolean(serial) || mdns;
     this.adb = adb;
     this.label = this.serial;
     this.capabilities = {
@@ -64,7 +90,9 @@ class AndroidTvDriver {
   }
 
   async connect() {
-    await run(this.adb, ['connect', this.serial], { timeout: 8000 });
+    if (!this.skipConnect) {
+      await run(this.adb, ['connect', this.serial], { timeout: 8000 });
+    }
     const { stdout } = await run(this.adb, ['-s', this.serial, 'shell', 'getprop', 'ro.product.model'], { timeout: 8000 });
     this.label = stdout.trim() || this.serial;
 
@@ -139,4 +167,11 @@ class AndroidTvDriver {
   }
 }
 
-module.exports = { AndroidTvDriver, KEY, parseMediaSession };
+module.exports = {
+  AndroidTvDriver,
+  KEY,
+  parseMediaSession,
+  parseAdbDevices,
+  pickAdbSerial,
+  listAdbDevices,
+};

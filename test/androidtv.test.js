@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseMediaSession } = require('../agent/drivers/androidtv');
+const { parseMediaSession, parseAdbDevices, pickAdbSerial } = require('../agent/drivers/androidtv');
 
 const DUMP = `
 Sessions Stack - have 2 sessions:
@@ -18,6 +18,17 @@ test('media session parsing prefers the Netflix player', () => {
   assert.strictEqual(parsed.paused, true);
   assert.ok(Math.abs(parsed.position - 615.25) < 0.01);
   assert.strictEqual(parsed.updatedAt, 4242);
+});
+
+test('adb devices parser prefers a live wireless Capsule', () => {
+  const devices = parseAdbDevices(`
+List of devices attached
+192.168.1.108:41275	offline
+adb-D2426F3123270432-tz6ENw._adb-tls-connect._tcp	device product:d2426 model:D2426
+emulator-5554	device
+`);
+  assert.strictEqual(devices.length, 3);
+  assert.strictEqual(pickAdbSerial(devices), 'adb-D2426F3123270432-tz6ENw._adb-tls-connect._tcp');
 });
 
 test('media session parsing treats state 3 as playing', () => {

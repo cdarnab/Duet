@@ -137,6 +137,16 @@ test('owner setup, login, invite, and invited user can create a room', async () 
   const page = await fetch(`${base()}${body.joinUrl}`, { headers: withCookie() });
   assert.strictEqual(page.status, 200);
   assert.match(await page.text(), /Join this room/);
+
+  const mine = await fetch(`${base()}/api/rooms/mine`, { headers: withCookie() });
+  assert.strictEqual(mine.status, 200);
+  const listed = await mine.json();
+  assert.ok(listed.rooms.some((room) => room.code === body.code));
+});
+
+test('rooms/mine requires a session', async () => {
+  const res = await fetch(`${base()}/api/rooms/mine`);
+  assert.strictEqual(res.status, 401);
 });
 
 test('a device agent with a session can join a room', async () => {
