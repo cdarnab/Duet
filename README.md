@@ -221,6 +221,10 @@ If you created the room in the extension, the agent joins that code automaticall
 If you’re joining someone else’s room, it asks for the code. Do not pass `--password`
 on the command line — that’s what `capsule:login` is for.
 
+Pause and play go both ways once the agent can see transport (MediaSession or
+`dumpsys audio`). Resync then matches that shared pause/play. Playhead drift still
+cannot be measured on this Netflix APK.
+
 Partner uses Chrome + the Duet extension on the same title, then **Count us in**.
 Leave the Capsule window open for the movie. Do not screen-cast; DRM will black the
 picture. If ADB will not connect, use the phone cue console: `/tv.html#YOURCODE`.

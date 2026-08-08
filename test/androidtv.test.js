@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseMediaSession, parseAdbDevices, pickAdbSerial } = require('../agent/drivers/androidtv');
+const { parseMediaSession, parseAudioPlayback, parseAdbDevices, pickAdbSerial } = require('../agent/drivers/androidtv');
 
 const DUMP = `
 Sessions Stack - have 2 sessions:
@@ -37,4 +37,28 @@ test('media session parsing treats state 3 as playing', () => {
   );
   assert.strictEqual(parsed.paused, false);
   assert.strictEqual(parsed.position, 8);
+});
+
+test('media session parsing can return pause without a playhead', () => {
+  const parsed = parseMediaSession(
+    'Session #1 com.netflix.mediaclient/Netflix\n  state=PlaybackState {state=2}'
+  );
+  assert.strictEqual(parsed.paused, true);
+  assert.strictEqual(parsed.position, null);
+});
+
+test('audio playback dump reports Netflix pause without a MediaSession', () => {
+  const dump = `
+AudioPlaybackConfiguration piid:3 uid:10080 state:started attr:AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION
+AudioPlaybackConfiguration piid:9 uid:10123 state:paused attr:AudioAttributes: usage=USAGE_MEDIA content=CONTENT_TYPE_MOVIE
+`;
+  const parsed = parseAudioPlayback(dump);
+  assert.deepStrictEqual(parsed, { paused: true, position: null });
+});
+
+test('audio playback dump treats USAGE_MEDIA started as playing', () => {
+  const parsed = parseAudioPlayback(
+    'AudioPlaybackConfiguration piid:9 state:started attr:AudioAttributes: usage=USAGE_MEDIA content=CONTENT_TYPE_MOVIE'
+  );
+  assert.strictEqual(parsed.paused, false);
 });

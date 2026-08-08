@@ -14,6 +14,7 @@ class MockDriver {
     this.label = 'Simulated TV';
     this.capabilities = {
       readPosition: opts.readPosition !== false,
+      readPaused: opts.readPaused === true || opts.readPosition !== false,
       canJump: true,
       jumpBack: opts.jumpBack ?? 10,
       jumpForward: opts.jumpForward ?? 10,
@@ -75,7 +76,11 @@ class MockDriver {
   }
 
   async position() {
-    if (!this.capabilities.readPosition) return null;
+    if (!this.capabilities.readPosition) {
+      if (!this.capabilities.readPaused) return null;
+      await this._delay(0.4);
+      return { position: null, paused: this.paused };
+    }
     await this._delay(0.4);
     // Report a stale, jittery number — never the truth.
     const stale = (this.reportLagMs / 1000) * (this.paused ? 0 : 1);

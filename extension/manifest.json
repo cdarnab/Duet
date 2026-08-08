@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Duet — watch together",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Keeps your video player in step with someone else's, on any site.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2KCOPMYc8qL3ckVkQgMrLCdjFLDK/LLHXddP1580b4uNkpV7zAg/UWum6/wryC2ynj3gmMtho5eBp+DixSpRGgd1o9AVSpoi/2exYHL8UWxEJlQmiWHMhAN65FMIpNFyyJtv01HOtTwxCWeUiLkULzVGyUK30MG3jVugjGhP71TjEV/D+7stqT7YNqCrHTN6n65x//1U9gyR+oYYQtxhB6HWAdAO9TtogmFTlZSr6Z5rL06fzkMzXRLRoDyLyRiHV9ASpy73s++n+vCYo0FAze1a+UD4G5/pyaT9iWe55c/AO34A/9kyn9gzx8B0EdQ42qjCiNMVAzBLOCTddKcJ8QIDAQAB",
   "permissions": ["storage", "scripting", "cookies"],
