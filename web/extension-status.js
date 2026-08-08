@@ -1,7 +1,8 @@
-/* Detects the loaded Duet extension and installs/updates it into
-   ~/Library/Application Support/Duet/extension on every Mac. */
+/* One-click install: Chrome writes the extension folder on this Mac.
+   Updates reuse the saved folder. Chrome still needs Load unpacked once. */
 (function () {
-  const INSTALL_DIR = '~/Library/Application Support/Duet/extension';
+  const DB_NAME = 'duet-extension';
+  const STORE = 'handles';
 
   function cmpVersion(a, b) {
     const pa = String(a || '0').split('.').map((n) => parseInt(n, 10) || 0);
@@ -38,13 +39,94 @@
     });
   }
 
-  function installCommand(origin) {
-    return [
-      `mkdir -p "$HOME/Library/Application Support/Duet/extension"`,
-      `curl -fsSL "${origin}/duet-extension.zip" -o /tmp/duet-extension.zip`,
-      `unzip -o /tmp/duet-extension.zip -d "$HOME/Library/Application Support/Duet/extension"`,
-      `open "$HOME/Library/Application Support/Duet/extension"`,
-    ].join(' && \\\n  ');
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function saveDirHandle(handle) {
+    const db = await openDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(handle, 'dir');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function loadDirHandle() {
+    try {
+      const db = await openDb();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).get('dir');
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async function hasWriteAccess(handle) {
+    if (!handle || !handle.queryPermission) return false;
+    try {
+      return (await handle.queryPermission({ mode: 'readwrite' })) === 'granted';
+    } catch {
+      return false;
+    }
+  }
+
+  async function requestWriteAccess(handle) {
+    if (!handle || !handle.requestPermission) return false;
+    try {
+      return (await handle.requestPermission({ mode: 'readwrite' })) === 'granted';
+    } catch {
+      return false;
+    }
+  }
+
+  async function readFolderVersion(handle) {
+    if (!handle) return null;
+    try {
+      let dir = handle;
+      try {
+        await dir.getFileHandle('manifest.json');
+      } catch {
+        dir = await dir.getDirectoryHandle('extension');
+      }
+      const file = await (await dir.getFileHandle('manifest.json')).getFile();
+      const manifest = JSON.parse(await file.text());
+      return manifest.version || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function writeFiles(rootHandle, files, origin) {
+    let dest = rootHandle;
+    try {
+      await rootHandle.getFileHandle('manifest.json');
+    } catch {
+      dest = await rootHandle.getDirectoryHandle('extension', { create: true });
+    }
+    for (const rel of files) {
+      const parts = rel.split('/').filter(Boolean);
+      let dir = dest;
+      for (let i = 0; i < parts.length - 1; i++) {
+        dir = await dir.getDirectoryHandle(parts[i], { create: true });
+      }
+      const fileHandle = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+      const writable = await fileHandle.createWritable();
+      const res = await fetch(`${origin}/extension-dist/${parts.map(encodeURIComponent).join('/')}`);
+      if (!res.ok) throw new Error(`Could not download ${rel}`);
+      await writable.write(await res.blob());
+      await writable.close();
+    }
   }
 
   function setStatus({ title, button, disabled, hint, showSteps }) {
@@ -61,55 +143,89 @@
     document.getElementById('ext-version').textContent = 'v' + latest;
     document.querySelectorAll('.ext-version-copy').forEach((el) => { el.textContent = latest; });
 
-    const installed = await pingExtension(info.id);
-    if (!installed) {
+    const loaded = await pingExtension(info.id);
+    const handle = await loadDirHandle();
+    const folderVersion = (handle && await hasWriteAccess(handle)) ? await readFolderVersion(handle) : null;
+    const installedVersion = loaded?.version || folderVersion;
+
+    if (loaded && cmpVersion(loaded.version, latest) >= 0) {
       setStatus({
-        title: 'Install Extension',
-        button: 'Install Extension',
-        hint: `Files go here on every Mac: ${INSTALL_DIR}. Chrome still needs Load unpacked the first time.`,
-        showSteps: true,
+        title: 'Extension up to date',
+        button: 'Extension up to date',
+        disabled: true,
+        hint: `Chrome is running Duet v${loaded.version}.`,
+        showSteps: false,
       });
-      return 'missing';
+      return 'current';
     }
-    if (cmpVersion(installed.version, latest) < 0) {
+    if (installedVersion && cmpVersion(installedVersion, latest) < 0) {
       setStatus({
         title: 'Extension already installed but not up to date',
         button: 'Update extension',
-        hint: `This Mac has v${installed.version}. Latest is v${latest}. Update overwrites ${INSTALL_DIR}, then click Reload on chrome://extensions.`,
+        hint: `This Mac has v${installedVersion}. Latest is v${latest}. One click updates the folder; then Reload on chrome://extensions.`,
         showSteps: false,
       });
       return 'outdated';
     }
-    setStatus({
-      title: 'Extension up to date',
-      button: 'Extension up to date',
-      disabled: true,
-      hint: `Loaded v${installed.version} from ${INSTALL_DIR}.`,
-      showSteps: false,
-    });
-    return 'current';
-  }
-
-  async function runInstall(origin) {
-    const cmd = installCommand(origin);
-    const box = document.getElementById('install-cmd');
-    box.hidden = false;
-    box.textContent = cmd;
-    try {
-      await navigator.clipboard.writeText(cmd);
-      document.getElementById('ext-hint').textContent =
-        `Command copied. Paste it in Terminal, then Load unpacked from ${INSTALL_DIR} (or Reload if it is already loaded).`;
-    } catch {
-      document.getElementById('ext-hint').textContent =
-        `Copy the command below into Terminal, then Load unpacked from ${INSTALL_DIR}.`;
+    if (folderVersion && !loaded) {
+      setStatus({
+        title: 'Extension files are installed',
+        button: 'Install Extension',
+        hint: 'Finish once in Chrome: chrome://extensions → Developer mode → Load unpacked → pick the Duet/extension folder you just saved.',
+        showSteps: true,
+      });
+      return 'finish';
     }
-    const link = document.createElement('a');
-    link.href = '/install-duet.sh';
-    link.download = 'install-duet.sh';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    setStatus({
+      title: 'Install Extension',
+      button: 'Install Extension',
+      hint: 'One click saves the extension on this Mac. Chrome still needs Load unpacked the first time.',
+      showSteps: true,
+    });
+    return 'missing';
   }
 
-  window.DuetExtensionStatus = { refresh, runInstall, installCommand, INSTALL_DIR };
+  async function runInstall(origin, info) {
+    const hint = document.getElementById('ext-hint');
+    const box = document.getElementById('install-cmd');
+    if (box) box.hidden = true;
+
+    if (!window.showDirectoryPicker) {
+      hint.textContent = 'This browser cannot save a folder directly. Download the zip, unzip it, then Load unpacked.';
+      window.location.href = '/duet-extension.zip';
+      return;
+    }
+
+    hint.textContent = 'Choose or create a folder named Duet (Documents is best)…';
+    try {
+      let dir = await loadDirHandle();
+      if (!dir || !(await requestWriteAccess(dir))) {
+        dir = await window.showDirectoryPicker({
+          id: 'duet-extension',
+          mode: 'readwrite',
+          startIn: 'documents',
+        });
+      }
+      await saveDirHandle(dir);
+      hint.textContent = 'Saving files…';
+      const listing = await fetch(`${origin}/api/extension/files`).then((res) => {
+        if (!res.ok) throw new Error('Could not list extension files');
+        return res.json();
+      });
+      await writeFiles(dir, listing.files, origin);
+      hint.textContent = dir.name === 'extension'
+        ? `Saved. First time only: chrome://extensions → Load unpacked → pick “${dir.name}”. Later, just click Update and then Reload.`
+        : `Saved into “${dir.name}/extension”. First time only: chrome://extensions → Load unpacked → ${dir.name} → extension. Later, just click Update and then Reload.`;
+      document.getElementById('ext-steps').hidden = false;
+      if (info) await refresh(info);
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        hint.textContent = 'Install cancelled.';
+        return;
+      }
+      hint.textContent = 'Could not save the folder. Try again, or download the zip instead.';
+    }
+  }
+
+  window.DuetExtensionStatus = { refresh, runInstall };
 })();

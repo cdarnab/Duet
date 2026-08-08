@@ -67,8 +67,24 @@ function isPublicAsset(pathname) {
     pathname === '/version.json' ||
     pathname === '/duet-extension.zip' ||
     pathname === '/install-duet.sh' ||
-    pathname === '/install-duet.command'
+    pathname === '/install-duet.command' ||
+    pathname === '/api/extension/files' ||
+    pathname.startsWith('/extension-dist/')
   );
+}
+
+const EXT_ROOT = path.join(ROOT, 'extension');
+
+function listExtensionFiles(dir, rel = '') {
+  const out = [];
+  for (const name of fs.readdirSync(dir)) {
+    if (name.startsWith('.')) continue;
+    const full = path.join(dir, name);
+    const relPath = rel ? `${rel}/${name}` : name;
+    if (fs.statSync(full).isDirectory()) out.push(...listExtensionFiles(full, relPath));
+    else out.push(relPath);
+  }
+  return out.sort();
 }
 
 async function handleRequest(req, res) {
@@ -77,6 +93,32 @@ async function handleRequest(req, res) {
   if (url.pathname === '/health') {
     res.writeHead(200, securityHeaders({ 'content-type': 'application/json' }));
     return res.end(JSON.stringify({ ok: true, rooms: store.rooms.size, uptime: process.uptime() }));
+  }
+
+  if (url.pathname === '/api/extension/files') {
+    const manifest = JSON.parse(fs.readFileSync(path.join(EXT_ROOT, 'manifest.json'), 'utf8'));
+    res.writeHead(200, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+    return res.end(JSON.stringify({ version: manifest.version, files: listExtensionFiles(EXT_ROOT) }));
+  }
+
+  if (url.pathname.startsWith('/extension-dist/')) {
+    const rel = decodeURIComponent(url.pathname.slice('/extension-dist/'.length)).replace(/^\/+/, '');
+    if (!rel || rel.includes('..') || path.isAbsolute(rel)) {
+      res.writeHead(403, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
+      return res.end('Forbidden');
+    }
+    const full = path.join(EXT_ROOT, rel);
+    if (!full.startsWith(EXT_ROOT + path.sep)) {
+      res.writeHead(403, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
+      return res.end('Forbidden');
+    }
+    if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+      res.writeHead(404, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
+      return res.end('Not found');
+    }
+    const headers = securityHeaders({ 'content-type': MIME[path.extname(full)] || 'application/octet-stream' });
+    res.writeHead(200, headers);
+    return res.end(fs.readFileSync(full));
   }
 
   if (url.pathname === '/install-duet.sh' || url.pathname === '/install-duet.command') {
