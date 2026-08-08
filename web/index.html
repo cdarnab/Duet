@@ -4,6 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Duet — watch together, apart</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
@@ -14,19 +17,19 @@
   <p class="lede">Duet keeps two players on the same frame, down to a tenth of a second, on whatever you're already watching. You each stream from your own account. Duet only carries the timing.</p>
 
   <div class="card">
-    <p class="eyebrow">Browser extension · <span id="ext-version">v1.5.0</span></p>
+    <p class="eyebrow">Browser extension · <span id="ext-version">v1.6.0</span></p>
     <h2 style="margin-top:6px">Get the extension</h2>
     <p>Both people install this in Chrome, Edge, Brave, or Arc, then join the same room code.</p>
     <div class="row">
-      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.5.0</a>
+      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.6.0</a>
     </div>
-    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.5.0</span></strong>.</p>
+    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.6.0</span></strong>.</p>
     <ol class="small" style="margin-bottom:0; padding-left:1.2em">
       <li>Unzip the download</li>
       <li>Open <code>chrome://extensions</code></li>
       <li>Turn on <strong>Developer mode</strong></li>
       <li>Remove any older Duet, then <strong>Load unpacked</strong> → select the unzipped folder</li>
-      <li>In the Duet popup, enter the room code and join</li>
+      <li>In the Duet popup, create a room or enter the code and join</li>
     </ol>
   </div>
 
@@ -122,7 +125,7 @@
       who.appendChild(document.createTextNode(' · '));
       const admin = document.createElement('a');
       admin.href = '/admin';
-      admin.textContent = 'Invite';
+      admin.textContent = 'People';
       who.appendChild(admin);
     }
     who.appendChild(document.createTextNode(' · '));
