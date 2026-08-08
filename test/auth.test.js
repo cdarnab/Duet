@@ -65,7 +65,6 @@ test('the landing page is public but room surfaces require login', async () => {
   const landing = await fetch(`${base()}/`, { redirect: 'manual' });
   assert.strictEqual(landing.status, 200);
   assert.match(await landing.text(), /Press play/);
-
   const protectedPage = await fetch(`${base()}/companion.html`, { redirect: 'manual' });
   assert.strictEqual(protectedPage.status, 302);
   assert.match(protectedPage.headers.get('location'), /^\/login\?next=/);
