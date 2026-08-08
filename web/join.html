@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Duet — join room</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<main class="wrap">
+  <p class="eyebrow">Watch together</p>
+  <h1>Join this room</h1>
+  <p class="lede" id="lede">Open the Duet extension and join with this code, or use the console on this page.</p>
+
+  <div class="card">
+    <p class="eyebrow">Room code</p>
+    <div class="code" id="code">------</div>
+    <p class="small" id="host" style="margin:8px 0 0"></p>
+    <p class="small" id="people" style="margin:6px 0 0"></p>
+  </div>
+
+  <div class="row">
+    <button class="btn primary" id="copy">Copy code</button>
+    <a class="btn" id="messages">Messages</a>
+    <a class="btn" id="email">Email</a>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <a class="btn" id="console">Open console</a>
+    <a class="btn" href="/">Home</a>
+  </div>
+  <p class="small" id="copy-status" style="margin-top:12px"></p>
+</main>
+<script>
+  const code = (location.pathname.split('/').pop() || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  const origin = location.origin;
+  const joinUrl = `${origin}/r/${code}`;
+  const shareText = `Watch together on Duet. Room ${code}.\n\n${joinUrl}`;
+
+  document.getElementById('code').textContent = code || '------';
+  document.getElementById('console').href = code ? `/companion.html#${code}` : '/';
+  document.getElementById('messages').href = `sms:?&body=${encodeURIComponent(shareText)}`;
+  document.getElementById('email').href = `mailto:?subject=${encodeURIComponent('Watch together on Duet')}&body=${encodeURIComponent(shareText)}`;
+
+  document.getElementById('copy').addEventListener('click', async () => {
+    const status = document.getElementById('copy-status');
+    try {
+      await navigator.clipboard.writeText(code);
+      status.textContent = 'Code copied. Paste it in the Duet extension or send the link above.';
+    } catch {
+      status.textContent = 'Copy failed — select the code above.';
+    }
+  });
+
+  fetch(`/api/room/${code}`).then(async (res) => {
+    if (!res.ok) return;
+    const info = await res.json();
+    if (info.creator?.name) {
+      document.getElementById('host').textContent = `Hosted by ${info.creator.name}`;
+      document.getElementById('lede').textContent = `${info.creator.name} started this room. Join with the code, or open the console.`;
+    }
+    const others = (info.members || []).filter((m) => !m.host).map((m) => m.name);
+    if (others.length) document.getElementById('people').textContent = `Also here: ${others.join(', ')}`;
+  }).catch(() => {});
+</script>
+</body>
+</html>
