@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Duet — accept invite</title>
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<main class="wrap">
+  <p class="eyebrow">You’re invited</p>
+  <h1>Choose a password</h1>
+  <p class="lede">This link is single-use. Pick a password at least 12 characters long.</p>
+  <form class="card" id="form">
+    <label class="small" for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="new-password" required minlength="12" />
+    <button class="btn primary wide" style="margin-top:14px" type="submit">Join Duet</button>
+    <p class="small" id="error" style="margin:12px 0 0;color:var(--rose)"></p>
+  </form>
+</main>
+<script>
+  document.getElementById('form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const error = document.getElementById('error');
+    error.textContent = '';
+    const res = await fetch(location.pathname, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: document.getElementById('password').value }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      error.textContent = body.error === 'weak_password'
+        ? 'Use at least 12 characters.'
+        : 'This invite is invalid or already used.';
+      return;
+    }
+    location.href = '/';
+  });
+</script>
+</body>
+</html>

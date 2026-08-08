@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Duet — owner setup</title>
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<main class="wrap">
+  <p class="eyebrow">First run</p>
+  <h1>Create your owner password</h1>
+  <p class="lede">Use the setup token from the server environment, then a password at least 12 characters long.</p>
+  <form class="card" id="form">
+    <label class="small" for="token">Setup token</label>
+    <input id="token" name="token" type="password" autocomplete="off" required />
+    <label class="small" for="password" style="display:block;margin-top:12px">Owner password</label>
+    <input id="password" name="password" type="password" autocomplete="new-password" required minlength="12" />
+    <button class="btn primary wide" style="margin-top:14px" type="submit">Save password</button>
+    <p class="small" id="error" style="margin:12px 0 0;color:var(--rose)"></p>
+  </form>
+</main>
+<script>
+  const params = new URLSearchParams(location.search);
+  if (params.get('token')) document.getElementById('token').value = params.get('token');
+  document.getElementById('form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const error = document.getElementById('error');
+    error.textContent = '';
+    const res = await fetch('/setup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        token: document.getElementById('token').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      error.textContent = body.error === 'weak_password'
+        ? 'Use at least 12 characters.'
+        : 'Setup failed. Check the token.';
+      return;
+    }
+    location.href = '/login';
+  });
+</script>
+</body>
+</html>

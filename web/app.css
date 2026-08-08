@@ -161,7 +161,7 @@ a.btn { display: inline-block; text-decoration: none; text-align: center; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .row > * { flex: 1 1 auto; }
 
-input[type='text'], input[type='url'] {
+input[type='text'], input[type='url'], input[type='email'], input[type='password'] {
   font-family: var(--mono);
   font-size: 16px;
   width: 100%;

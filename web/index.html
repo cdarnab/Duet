@@ -8,18 +8,19 @@
 </head>
 <body>
 <main class="wrap">
+  <p class="eyebrow" id="who" style="display:none"></p>
   <p class="eyebrow">Two rooms · One reel</p>
   <h1>Press play <em>together</em>.</h1>
   <p class="lede">Duet keeps two players on the same frame, down to a tenth of a second, on whatever you're already watching. You each stream from your own account. Duet only carries the timing.</p>
 
   <div class="card">
-    <p class="eyebrow">Browser extension · <span id="ext-version">v1.3.0</span></p>
+    <p class="eyebrow">Browser extension · <span id="ext-version">v1.4.0</span></p>
     <h2 style="margin-top:6px">Get the extension</h2>
     <p>Both people install this in Chrome, Edge, Brave, or Arc, then join the same room code.</p>
     <div class="row">
-      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.3.0</a>
+      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.4.0</a>
     </div>
-    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.3.0</span></strong>.</p>
+    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.4.0</span></strong>.</p>
     <ol class="small" style="margin-bottom:0; padding-left:1.2em">
       <li>Unzip the download</li>
       <li>Open <code>chrome://extensions</code></li>
@@ -80,6 +81,7 @@
 
   document.getElementById('create').addEventListener('click', async () => {
     const res = await fetch('/api/room/new');
+    if (res.status === 401) { location.href = '/login'; return; }
     const { code } = await res.json();
     location.href = `/companion.html#${code}`;
   });
@@ -95,6 +97,33 @@
   };
   document.getElementById('join-companion').addEventListener('click', go('companion.html'));
   document.getElementById('join-tv').addEventListener('click', go('tv.html'));
+
+  fetch('/api/me').then(async (res) => {
+    if (!res.ok) return;
+    const me = await res.json();
+    const who = document.getElementById('who');
+    who.style.display = 'block';
+    who.innerHTML = '';
+    const email = document.createElement('span');
+    email.textContent = me.email;
+    who.appendChild(email);
+    if (me.owner) {
+      who.appendChild(document.createTextNode(' · '));
+      const admin = document.createElement('a');
+      admin.href = '/admin';
+      admin.textContent = 'Invite';
+      who.appendChild(admin);
+    }
+    who.appendChild(document.createTextNode(' · '));
+    const logout = document.createElement('a');
+    logout.href = '#';
+    logout.textContent = 'Log out';
+    logout.addEventListener('click', (event) => {
+      event.preventDefault();
+      fetch('/logout', { method: 'POST' }).finally(() => { location.href = '/login'; });
+    });
+    who.appendChild(logout);
+  }).catch(() => {});
 
   fetch('/version.json')
     .then((r) => r.json())

@@ -24,9 +24,13 @@ function refresh() {
     }
 
     $('dot').classList.toggle('on', res.connected);
-    $('status-text').textContent = res.connected
-      ? `In room ${res.config.room}`
-      : res.config.room ? 'Reconnecting…' : 'Not connected';
+    const loginWrap = $('login-wrap');
+    if (loginWrap) loginWrap.style.display = res.authRequired ? 'block' : 'none';
+    $('status-text').textContent = res.authRequired
+      ? 'Log in on the Duet site first'
+      : res.connected
+        ? `In room ${res.config.room}`
+        : res.config.room ? 'Reconnecting…' : 'Not connected';
 
     const rtt = Math.round(res.rtt || 0);
     const offset = Math.round(res.offset || 0);

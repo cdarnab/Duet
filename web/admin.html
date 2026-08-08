@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Duet — invites</title>
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<main class="wrap">
+  <p class="eyebrow"><a href="/">Back</a></p>
+  <h1>Invite someone</h1>
+  <p class="lede">They get a one-week link. Send it yourself by email or message — Duet does not send mail.</p>
+  <form class="card" id="form">
+    <label class="small" for="email">Email</label>
+    <input id="email" name="email" type="email" required />
+    <button class="btn primary wide" style="margin-top:14px" type="submit">Create invite link</button>
+    <p class="small" id="error" style="margin:12px 0 0;color:var(--rose)"></p>
+    <p class="small" id="link" style="margin:12px 0 0;word-break:break-all"></p>
+  </form>
+  <div class="card">
+    <h2 style="margin-top:0">People</h2>
+    <div class="small" id="people"></div>
+  </div>
+</main>
+<script>
+  async function refresh() {
+    const res = await fetch('/api/invites');
+    if (res.status === 401 || res.status === 403) { location.href = '/login'; return; }
+    const data = await res.json();
+    const lines = [
+      ...(data.users || []).map((u) => `${u.email} · ${u.role}`),
+      ...(data.invites || []).map((i) => `${i.email} · pending invite`),
+    ];
+    document.getElementById('people').textContent = lines.join('\n') || 'No one yet.';
+  }
+  document.getElementById('form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    document.getElementById('error').textContent = '';
+    document.getElementById('link').textContent = '';
+    const res = await fetch('/api/invites', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: document.getElementById('email').value }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      document.getElementById('error').textContent = body.error === 'already_registered'
+        ? 'That email already has access.'
+        : 'Could not create invite.';
+      return;
+    }
+    document.getElementById('link').textContent = location.origin + body.url;
+    await refresh();
+  });
+  refresh();
+</script>
+</body>
+</html>

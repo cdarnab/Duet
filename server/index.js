@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const { RoomStore, Member, validRoomCode, normalizeRoomCode } = require('./rooms');
+const auth = require('./auth');
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -59,19 +60,36 @@ function sanitizeText(value, max) {
     .slice(0, max);
 }
 
-const server = http.createServer((req, res) => {
-  if (req.url === '/health') {
+function isPublicAsset(pathname) {
+  return pathname === '/app.css' || pathname === '/favicon.ico';
+}
+
+async function handleRequest(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (url.pathname === '/health') {
     res.writeHead(200, securityHeaders({ 'content-type': 'application/json' }));
     return res.end(JSON.stringify({ ok: true, rooms: store.rooms.size, uptime: process.uptime() }));
   }
 
-  if (req.url.startsWith('/api/room/new')) {
+  if (await auth.handleHttp(req, res, url, { securityHeaders })) return;
+
+  if (auth.enabled() && !auth.sessionFromRequest(req) && !isPublicAsset(url.pathname)) {
+    if (url.pathname.startsWith('/api/')) {
+      res.writeHead(401, securityHeaders({ 'content-type': 'application/json; charset=utf-8' }));
+      return res.end(JSON.stringify({ error: 'auth_required' }));
+    }
+    res.writeHead(302, securityHeaders({ location: '/login' }));
+    return res.end();
+  }
+
+  if (url.pathname.startsWith('/api/room/new')) {
     const room = store.create();
     res.writeHead(200, securityHeaders({ 'content-type': 'application/json' }));
     return res.end(JSON.stringify({ code: room.code }));
   }
 
-  let file = resolveStatic(req.url);
+  let file = resolveStatic(url.pathname);
   if (!file) {
     res.writeHead(403, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
     return res.end('Forbidden');
@@ -90,6 +108,16 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, headers);
     res.end(buf);
   });
+}
+
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((err) => {
+    console.error(err);
+    if (!res.headersSent) {
+      res.writeHead(500, securityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
+      res.end('Server error');
+    }
+  });
 });
 
 /* --------------------------------------------------------------- websocket */
@@ -107,7 +135,7 @@ function broadcast(room, msg, exceptId) {
   }
 }
 
-wss.on('connection', (socket) => {
+wss.on('connection', (socket, req) => {
   const member = new Member(crypto.randomUUID(), socket);
   let room = null;
 
@@ -132,6 +160,15 @@ wss.on('connection', (socket) => {
         return send(socket, { type: 'pong', t0: msg.t0, t1: Date.now() });
 
       case 'hello': {
+        if (auth.enabled()) {
+          const session = auth.sessionFromHello(req, msg.session);
+          if (!session) {
+            send(socket, { type: 'error', error: 'auth_required' });
+            socket.close();
+            return;
+          }
+          member.email = session.user.email;
+        }
         const code = normalizeRoomCode(msg.room);
         if (!validRoomCode(code)) {
           send(socket, { type: 'error', error: 'invalid_room' });
@@ -142,7 +179,7 @@ wss.on('connection', (socket) => {
           send(socket, { type: 'error', error: 'invalid_room' });
           return;
         }
-        member.name = sanitizeText(msg.name || 'Guest', 32) || 'Guest';
+        member.name = sanitizeText(msg.name || (member.email ? member.email.split('@')[0] : 'Guest'), 32) || 'Guest';
         member.surface = sanitizeText(msg.surface || 'unknown', 16) || 'unknown';
         room.add(member);
         send(socket, {
@@ -258,8 +295,12 @@ function start() {
 }
 
 if (require.main === module) {
+  if (process.env.DUET_AUTH === 'on' && !auth.enabled()) {
+    console.error('DUET_AUTH=on requires DUET_OWNER_EMAIL');
+    process.exit(1);
+  }
   start().then(() => {
-    console.log(`Duet listening on http://${HOST}:${PORT}`);
+    console.log(`Duet listening on http://${HOST}:${PORT}${auth.enabled() ? ' (invite-only auth on)' : ''}`);
   });
 }
 

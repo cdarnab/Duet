@@ -63,14 +63,25 @@ Open <http://localhost:8080>, create a room, and note the six-letter code.
 
 Streaming sites are HTTPS, so the browser will only let the extension open a
 `wss://` socket. Beyond localhost you need a certificate. Point a hostname at your
-machine and:
+machine and create a `.env` with invite-only auth:
 
 ```bash
-DUET_DOMAIN=duet.example.com docker compose --profile tls up -d
+DUET_DOMAIN=duet.arnabbanik.com
+DUET_AUTH=on
+DUET_OWNER_EMAIL=you@example.com
+DUET_SETUP_TOKEN=$(openssl rand -base64 32)
 ```
 
-Caddy provisions the certificate automatically. In the extension, set the server to
-`https://duet.example.com`.
+```bash
+docker compose --profile tls up -d
+```
+
+Caddy provisions the certificate automatically. Then open `/setup`, set the owner
+password with `DUET_SETUP_TOKEN`, log in, and use **Invite** to create a one-week
+link for each person. They choose a password on that link; only invited emails can
+open the site or join rooms.
+
+Local `npm start` without `DUET_AUTH=on` stays open for development.
 
 Any small VPS works — the server holds room state in memory and sends a few dozen
 bytes per second per person.
@@ -90,7 +101,8 @@ npm run build:extension
 1. Go to `chrome://extensions`
 2. Turn on **Developer mode**
 3. **Load unpacked** → select `extension/` (or the unzipped download). Do not load a leftover `duet-extension/` folder.
-4. Click the Duet icon, enter your server URL and the room code, **Join room**
+4. Click the Duet icon, enter the room code, **Join room**
+5. If the site is invite-only, log in on the website first so the extension can use your session cookie
 
 Then just play something. The extension finds whatever video is on the page. When
 one of you plays, pauses, or skips, the other follows.

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Duet — log in</title>
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<main class="wrap">
+  <p class="eyebrow">Invite only</p>
+  <h1>Log in</h1>
+  <p class="lede">Only people Arnab has invited can use this Duet.</p>
+  <form class="card" id="form">
+    <label class="small" for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="username" required />
+    <label class="small" for="password" style="display:block;margin-top:12px">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required minlength="12" />
+    <button class="btn primary wide" style="margin-top:14px" type="submit">Log in</button>
+    <p class="small" id="error" style="margin:12px 0 0;color:var(--rose)"></p>
+  </form>
+</main>
+<script>
+  document.getElementById('form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const error = document.getElementById('error');
+    error.textContent = '';
+    const res = await fetch('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    if (res.status === 429) { error.textContent = 'Too many attempts. Wait a few minutes.'; return; }
+    if (!res.ok) { error.textContent = 'Invalid email or password.'; return; }
+    location.href = '/';
+  });
+</script>
+</body>
+</html>
