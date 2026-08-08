@@ -132,6 +132,48 @@ function isLivePlayhead(session, uptimeMs, { maxAgeMs = 4000 } = {}) {
   return age >= -500 && age <= maxAgeMs;
 }
 
+const LAUNCHER_APP = /tv\.launcher|leanbacklauncher|systemui|screensaver/i;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function parseCurrentApp(dump) {
+  const text = String(dump || '');
+  const focus = /mCurrentFocus=\S+\s+\S+\s+([A-Za-z0-9._]+)\//.exec(text);
+  if (focus) return focus[1];
+  const app = /mFocusedApp=.*\s([A-Za-z0-9._]+)\//.exec(text);
+  return app ? app[1] : null;
+}
+
+function parseWakeLockSize(dump) {
+  const match = /size=(\d+)/.exec(String(dump || ''));
+  return match ? Number(match[1]) : null;
+}
+
+/** Current audio focus only — ignore the historical event log. */
+function parseAudioFocusPaused(dump, pkg = /netflix/i) {
+  const text = String(dump || '');
+  const stack = /Audio Focus stack entries[\s\S]*?(?=Audio event log:|$)/i.exec(text)?.[0] || '';
+  if (!/Audio Focus stack entries/i.test(stack)) return null;
+  if (pkg.test(stack)) return false;
+  return true;
+}
+
+/**
+ * Fire Netflix ninja freezes PlaybackState. Use live session if it exists,
+ * else audio focus, else wake-lock size (HA / python-androidtv).
+ */
+function inferFirePaused({ app, wakeLockSize, focusPaused, session, uptimeMs } = {}) {
+  if (session && typeof session.paused === 'boolean' && isLivePlayhead(session, uptimeMs)) {
+    return session.paused;
+  }
+  if (!app || !/netflix/i.test(app)) return null;
+  if (typeof focusPaused === 'boolean') return focusPaused;
+  if (Number.isFinite(wakeLockSize)) {
+    if (wakeLockSize >= 3) return false;
+    if (wakeLockSize >= 1) return true;
+  }
+  return null;
+}
+
 /** Parse dumpsys media_session. Prefer a Netflix session when several exist. */
 function parseMediaSession(dump, prefer = /netflix/i) {
   if (!dump) return null;
@@ -214,7 +256,7 @@ class AndroidTvDriver {
     this.label = this.serial;
     this.capabilities = {
       readPosition: false,
-      readPaused: false,
+      readPaused: this.flavor === 'firetv',
       canJump: this.flavor !== 'firetv',
       jumpBack,
       jumpForward,
@@ -241,13 +283,12 @@ class AndroidTvDriver {
     await this._shell('echo ping');
     this.capabilities.commandLatencyMs = Date.now() - t0;
 
-    // Fire TV Netflix publishes a frozen playhead (updated tens of minutes
-    // ago, state always "playing"). Closed loop then "corrects" with skip +
-    // pause holds — that is the lag/flicker. Stay open-loop like Roku Netflix.
+    // Fire Netflix freezes its playhead. Never closed-loop seek. Pause/play
+    // is still readable via focus + wake locks, same as python-androidtv.
     if (this.flavor === 'firetv') {
       this.capabilities.readPosition = false;
-      this.capabilities.readPaused = false;
       this.capabilities.canJump = false;
+      this.capabilities.readPaused = true;
       return this;
     }
 
@@ -258,13 +299,13 @@ class AndroidTvDriver {
   }
 
   async play(known) {
-    if (this.flavor === 'firetv') return this._fireTransport('play');
+    if (this.flavor === 'firetv') return this._fireSetPaused(false);
     if (this.flavor === 'nebula') return this._toggleTo(false, known);
     return this._key(KEY.play);
   }
 
   async pause(known) {
-    if (this.flavor === 'firetv') return this._fireTransport('pause');
+    if (this.flavor === 'firetv') return this._fireSetPaused(true);
     if (this.flavor === 'nebula') return this._toggleTo(true, known);
     return this._key(KEY.pause);
   }
@@ -279,21 +320,48 @@ class AndroidTvDriver {
     return this._key(KEY.playPause);
   }
 
-  /**
-   * Fire Netflix ignores injected 126/127. The remote is MEDIA_PLAY_PAUSE (85).
-   * Toggle first, then force the desired state via `media dispatch` so we do
-   * not end up un-pausing if both channels work.
-   */
-  async _fireTransport(op) {
+  async currentApp() {
     try {
-      await this._key(KEY.playPause);
+      const dump = await this._shell('dumpsys window 2>/dev/null | grep -e mCurrentFocus -e mFocusedApp');
+      return parseCurrentApp(dump);
     } catch {
-      /* continue — dispatch may still work */
+      return null;
     }
+  }
+
+  /** Keys go to the launcher if Netflix is backgrounded — that was the Toshiba miss. */
+  async ensureForeground() {
+    if (this.flavor !== 'firetv') return;
+    const app = await this.currentApp();
+    if (app && /netflix/i.test(app)) return;
+    if (app && !LAUNCHER_APP.test(app)) return;
     try {
-      await this._exec(this.adb, ['-s', this.serial, 'shell', 'media', 'dispatch', op], { timeout: 4000 });
+      await this._exec(
+        this.adb,
+        ['-s', this.serial, 'shell', 'am', 'start', '--activity-single-top', '-n', 'com.netflix.ninja/.MainActivity'],
+        { timeout: 8000 }
+      );
+      await sleep(400);
     } catch {
-      /* older Fire OS / missing media binary */
+      /* leave whatever is focused */
+    }
+  }
+
+  /**
+   * Fire remote play/pause is KEYCODE_MEDIA_PLAY_PAUSE (85) only. Dedicated
+   * 126/127 and `media dispatch` either no-op or undo the toggle. First press
+   * often only shows the player chrome — if state does not change, press again.
+   */
+  async _fireSetPaused(wantPaused) {
+    await this.ensureForeground();
+    let state = await this.position();
+    if (state && state.paused === wantPaused) return;
+    for (let i = 0; i < 3; i++) {
+      await this._key(KEY.playPause);
+      await sleep(450);
+      state = await this.position();
+      if (state && state.paused === wantPaused) return;
+      if (!state) return;
     }
   }
 
@@ -312,7 +380,7 @@ class AndroidTvDriver {
    * often has no session — fall back to dumpsys audio for pause/play only.
    */
   async position() {
-    if (this.flavor === 'firetv') return null;
+    if (this.flavor === 'firetv') return this._firePosition();
     try {
       const sessionDump = await this._shell('dumpsys media_session');
       const session = parseMediaSession(sessionDump);
@@ -335,6 +403,42 @@ class AndroidTvDriver {
     } catch {
       return null;
     }
+  }
+
+  async _firePosition() {
+    let windowDump = '';
+    let powerDump = '';
+    let audioDump = '';
+    let sessionDump = '';
+    try {
+      windowDump = await this._shell('dumpsys window 2>/dev/null | grep -e mCurrentFocus -e mFocusedApp');
+    } catch {
+      /* optional */
+    }
+    try {
+      powerDump = await this._shell("dumpsys power | grep -e Locks -e size=");
+    } catch {
+      /* optional */
+    }
+    try {
+      audioDump = await this._shell('dumpsys audio | grep -A 40 "Audio Focus stack entries"');
+    } catch {
+      /* optional */
+    }
+    try {
+      sessionDump = await this._shell('dumpsys media_session');
+    } catch {
+      /* optional */
+    }
+    const paused = inferFirePaused({
+      app: parseCurrentApp(windowDump),
+      wakeLockSize: parseWakeLockSize(powerDump),
+      focusPaused: parseAudioFocusPaused(audioDump),
+      session: parseMediaSession(sessionDump),
+      uptimeMs: await this._uptimeMs(),
+    });
+    if (typeof paused !== 'boolean') return null;
+    return { position: null, paused };
   }
 
   async _uptimeMs() {
@@ -373,4 +477,8 @@ module.exports = {
   waitForAdbAuthorized,
   isLivePlayhead,
   splitMediaSessions,
+  parseCurrentApp,
+  parseWakeLockSize,
+  parseAudioFocusPaused,
+  inferFirePaused,
 };

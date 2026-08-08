@@ -10,6 +10,10 @@ const {
   waitForAdbAuthorized,
   isLivePlayhead,
   AndroidTvDriver,
+  parseCurrentApp,
+  parseWakeLockSize,
+  parseAudioFocusPaused,
+  inferFirePaused,
 } = require('../agent/drivers/androidtv');
 
 const DUMP = `
@@ -56,23 +60,111 @@ test('a frozen Fire TV playhead is not treated as live', () => {
 
 test('firetv driver stays open-loop and uses the Fire play/pause key', async () => {
   const calls = [];
+  let paused = false;
   const driver = new AndroidTvDriver({
     serial: '192.168.1.146:5555',
     flavor: 'firetv',
     exec: async (_adb, args) => {
-      calls.push(args.join(' '));
-      return { stdout: 'AFTHA004\n' };
+      const line = args.join(' ');
+      calls.push(line);
+      if (line.includes('getprop')) return { stdout: 'AFTHA004\n' };
+      if (line.includes('mCurrentFocus')) {
+        return { stdout: 'mCurrentFocus=Window{a u0 com.netflix.ninja/com.netflix.ninja.MainActivity}\n' };
+      }
+      if (line.includes('dumpsys power')) {
+        return { stdout: paused ? 'Wake Locks: size=2\n' : 'Wake Locks: size=4\n' };
+      }
+      if (line.includes('Audio Focus stack')) {
+        return {
+          stdout: paused
+            ? 'Audio Focus stack entries (last is top of stack):\n  source:android -- pack: android\nAudio event log:\n'
+            : 'Audio Focus stack entries (last is top of stack):\n  source:x -- pack: com.netflix.ninja -- gain: GAIN\nAudio event log:\n',
+        };
+      }
+      if (line.includes('keyevent 85')) {
+        paused = !paused;
+        return { stdout: '\n' };
+      }
+      return { stdout: '\n' };
     },
   });
   assert.strictEqual(driver.flavor, 'firetv');
   assert.strictEqual(driver.capabilities.canJump, false);
-  assert.strictEqual(await driver.position(), null);
+  assert.strictEqual(driver.capabilities.readPaused, true);
+  assert.deepStrictEqual(await driver.position(), { position: null, paused: false });
   await driver.pause();
+  assert.deepStrictEqual(await driver.position(), { position: null, paused: true });
   await driver.play();
+  assert.deepStrictEqual(await driver.position(), { position: null, paused: false });
   assert.ok(calls.some((c) => c.includes('keyevent 85')));
-  assert.ok(calls.some((c) => c.includes('media dispatch pause')));
-  assert.ok(calls.some((c) => c.includes('media dispatch play')));
+  assert.ok(!calls.some((c) => c.includes('media dispatch')));
   assert.ok(!calls.some((c) => /keyevent 12[67]/.test(c)));
+});
+
+test('firetv pause brings Netflix forward from the launcher', async () => {
+  const calls = [];
+  let focused = 'com.amazon.tv.launcher';
+  let paused = false;
+  const driver = new AndroidTvDriver({
+    serial: '192.168.1.146:5555',
+    flavor: 'firetv',
+    exec: async (_adb, args) => {
+      const line = args.join(' ');
+      calls.push(line);
+      if (line.includes('com.netflix.ninja/.MainActivity')) {
+        focused = 'com.netflix.ninja';
+        return { stdout: '\n' };
+      }
+      if (line.includes('mCurrentFocus')) {
+        return { stdout: `mCurrentFocus=Window{a u0 ${focused}/${focused}.MainActivity}\n` };
+      }
+      if (line.includes('dumpsys power')) return { stdout: paused ? 'Wake Locks: size=2\n' : 'Wake Locks: size=4\n' };
+      if (line.includes('Audio Focus stack')) {
+        return {
+          stdout: paused
+            ? 'Audio Focus stack entries (last is top of stack):\n  pack: android\nAudio event log:\n'
+            : 'Audio Focus stack entries (last is top of stack):\n  pack: com.netflix.ninja\nAudio event log:\n',
+        };
+      }
+      if (line.includes('keyevent 85')) {
+        paused = !paused;
+        return { stdout: '\n' };
+      }
+      return { stdout: '\n' };
+    },
+  });
+  await driver.pause();
+  assert.ok(calls.some((c) => c.includes('am start') && c.includes('com.netflix.ninja/.MainActivity')));
+  assert.ok(calls.some((c) => c.includes('keyevent 85')));
+});
+
+test('Fire TV pause is inferred from focus and wake locks, not a frozen session', () => {
+  assert.strictEqual(parseCurrentApp('mCurrentFocus=Window{8ae2ecb u0 com.amazon.tv.launcher/com.amazon.tv.launcher.ui.HomeActivity_vNext}'), 'com.amazon.tv.launcher');
+  assert.strictEqual(parseCurrentApp('mCurrentFocus=Window{a7d051e u0 com.netflix.ninja/com.netflix.ninja.MainActivity}'), 'com.netflix.ninja');
+  assert.strictEqual(parseWakeLockSize('Wake Locks: size=4'), 4);
+  assert.strictEqual(
+    parseAudioFocusPaused(
+      'Audio Focus stack entries (last is top of stack):\n  pack: com.netflix.ninja -- gain: GAIN\nAudio event log:\n08-08 abandonAudioFocus netflix'
+    ),
+    false
+  );
+  assert.strictEqual(
+    parseAudioFocusPaused(
+      'Audio Focus stack entries (last is top of stack):\n  pack: android\nAudio event log:\nrequestAudioFocus netflix'
+    ),
+    true
+  );
+  assert.strictEqual(
+    inferFirePaused({
+      app: 'com.netflix.ninja',
+      wakeLockSize: 2,
+      focusPaused: true,
+      session: { paused: false, position: 98, updatedAt: 1 },
+      uptimeMs: 1984963930,
+    }),
+    true
+  );
+  assert.strictEqual(inferFirePaused({ app: 'com.amazon.tv.launcher', wakeLockSize: 4, focusPaused: true }), null);
 });
 
 test('media session parsing prefers the Netflix player', () => {

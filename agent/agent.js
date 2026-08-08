@@ -39,6 +39,7 @@ class Agent extends EventEmitter {
     this.holdingRoom = false;
     this._assumedPaused = true;
     this._commandUntil = 0;
+    this._cueUntil = 0;
     this._deviceStable = false;
     this._stableSince = 0;
     this.stopped = false;
@@ -96,6 +97,7 @@ class Agent extends EventEmitter {
         this.selfId = msg.selfId;
         this.state = msg.state;
         this.emit('joined', msg);
+        this._followRoomNow().catch((err) => this.emit('error', err));
         break;
       case 'state':
         this.state = msg.state;
@@ -229,6 +231,7 @@ class Agent extends EventEmitter {
 
   _shouldPublishTransport(reading) {
     if (!reading || typeof reading.paused !== 'boolean') return false;
+    if (Date.now() < (this._cueUntil || 0)) return false;
     if (Date.now() < (this._commandUntil || 0)) return false;
     if (!this._deviceStable) return false;
     return reading.paused !== this._assumedPaused;
@@ -236,6 +239,7 @@ class Agent extends EventEmitter {
 
   _noteDeviceReading(reading) {
     if (!reading || typeof reading.paused !== 'boolean') return;
+    if (Date.now() < (this._cueUntil || 0)) return;
     if (Date.now() < (this._commandUntil || 0)) {
       this._deviceStable = false;
       this._stableSince = 0;
@@ -259,12 +263,14 @@ class Agent extends EventEmitter {
   /** Laptop pause/play should hit the TV immediately, not on the next poll. */
   async _followRoomNow() {
     if (this.busy || this.holdingRoom || this.stopped || this.state.seq < 0) return;
+    if (Date.now() < (this._cueUntil || 0)) return;
     if (this.state.paused === this._assumedPaused) return;
     this._markCommanded(this.state.paused);
     await (this.state.paused ? this.driver.pause() : this.driver.play());
   }
 
   async _mirrorTransport(reading) {
+    if (Date.now() < (this._cueUntil || 0)) return;
     const state = reading || (await this.driver.position());
     if (!state || typeof state.paused !== 'boolean') {
       // Blind: assume the device follows whatever we last told it.
@@ -330,15 +336,11 @@ class Agent extends EventEmitter {
    */
   async _resync() {
     this.emit('status', { connected: true });
-    this.emit('manual', { note: 'Resync: pausing both sides, then counting in' });
+    this.emit('manual', { note: 'Resync: pausing the TV, then counting in' });
     this.busy = true;
     try {
       this._markCommanded(true);
       await this.driver.pause();
-      const at = this.expectedPosition();
-      this._send({ type: 'state', paused: true, position: at, rate: 1 });
-      this.state = { ...this.state, paused: true, position: at, rate: 1 };
-      this._send({ type: 'cue', inMs: 3200 });
     } finally {
       this.estimator.reset();
       this.busy = false;
@@ -349,6 +351,7 @@ class Agent extends EventEmitter {
   _runCue(startAt) {
     const lead = this.driver.capabilities.commandLatencyMs || 0;
     const wait = startAt - this.serverNow() - lead;
+    this._cueUntil = startAt + 800;
     this.emit('cue', { startAt, wait });
     this._later(async () => {
       this._markCommanded(false);
