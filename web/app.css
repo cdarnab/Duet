@@ -1,0 +1,214 @@
+/* Duet — the room with the lights off.
+   Palette reads as a dark room lit by a screen: blue-black walls, a warm
+   projector lamp for your own marks, a rose for theirs. */
+
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+:root {
+  --ink: #0a0e1a;
+  --velvet: #141b30;
+  --haze: #232c4a;
+  --lamp: #f5c36b;
+  --rose: #e0708a;
+  --paper: #e8e6f0;
+  --dim: #8a90a8;
+  --good: #7fd1a8;
+
+  --display: 'Bodoni Moda', 'Didot', Georgia, serif;
+  --body: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  --r: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-image: radial-gradient(120% 70% at 50% -10%, #16203a 0%, var(--ink) 60%);
+  background-attachment: fixed;
+}
+
+a { color: var(--lamp); }
+
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 28px 20px 96px;
+}
+
+/* ------------------------------------------------------------- typography */
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+h1 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(38px, 11vw, 60px);
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+  margin: 10px 0 6px;
+}
+
+h1 em { font-style: italic; color: var(--lamp); }
+
+h2 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 22px;
+  margin: 30px 0 10px;
+}
+
+p { line-height: 1.55; color: #c9cbdd; }
+.lede { font-size: 16px; }
+.small { font-size: 13px; color: var(--dim); line-height: 1.5; }
+
+/* ---------------------------------------------------------------- surface */
+
+.card {
+  background: var(--velvet);
+  border: 1px solid var(--haze);
+  border-radius: var(--r);
+  padding: 18px;
+  margin: 14px 0;
+}
+
+/* ------------------------------------------- signature: the timecode strip */
+
+.strip {
+  background: #070a13;
+  border: 1px solid var(--haze);
+  border-radius: var(--r);
+  padding: 16px 16px 12px;
+  font-family: var(--mono);
+}
+
+.strip-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.strip-who { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+.strip-tc { font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.you .strip-tc { color: var(--lamp); }
+.them .strip-tc { color: var(--rose); }
+
+/* Two hairlines that visibly pull together as the players converge. */
+.rails { position: relative; height: 26px; margin: 8px 0 4px; }
+.rail {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  border-radius: 2px;
+  transition: transform 420ms cubic-bezier(.22,.8,.3,1);
+}
+.rail.you { background: var(--lamp); top: 6px; }
+.rail.them { background: var(--rose); top: 18px; }
+
+.delta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--haze);
+  margin-top: 8px;
+  padding-top: 10px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.delta b { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--paper); font-weight: 500; }
+.delta.locked b { color: var(--good); }
+
+/* ---------------------------------------------------------------- controls */
+
+a.btn { display: inline-block; text-decoration: none; text-align: center; }
+
+.btn {
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 12px 18px;
+  border-radius: var(--r);
+  border: 1px solid var(--haze);
+  background: var(--velvet);
+  color: var(--paper);
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+.btn:hover { border-color: var(--dim); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--lamp); border-color: var(--lamp); color: #1a1206; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.wide { width: 100%; }
+.btn:focus-visible, input:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1 1 auto; }
+
+input[type='text'], input[type='url'] {
+  font-family: var(--mono);
+  font-size: 16px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--haze);
+  background: #070a13;
+  color: var(--paper);
+}
+input::placeholder { color: #545a75; }
+
+.code {
+  font-family: var(--mono);
+  font-size: 30px;
+  letter-spacing: 0.2em;
+  color: var(--lamp);
+}
+
+/* ------------------------------------------------------------------ misc */
+
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #4a5170; display: inline-block; }
+.dot.on { background: var(--good); }
+
+.chatlog { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.msg { font-size: 14px; line-height: 1.45; }
+.msg .who { font-family: var(--mono); font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+.msg.mine .who { color: var(--lamp); }
+
+/* --------------------------------------------------------- countdown cue */
+
+.cue {
+  position: fixed;
+  inset: 0;
+  display: none;
+  place-items: center;
+  background: rgba(7, 10, 19, 0.94);
+  z-index: 50;
+}
+.cue.show { display: grid; }
+.cue-n {
+  font-family: var(--display);
+  font-size: clamp(120px, 46vw, 300px);
+  line-height: 1;
+  color: var(--lamp);
+}
+.cue-label { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.3em; font-size: 12px; color: var(--dim); text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

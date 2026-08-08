@@ -1,0 +1,5 @@
+{$DUET_DOMAIN} {
+	# Caddy provisions and renews the certificate itself, and proxies the
+	# websocket upgrade without extra configuration.
+	reverse_proxy duet:8080
+}

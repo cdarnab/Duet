@@ -1,0 +1,31 @@
+services:
+  duet:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+
+  # Streaming sites are HTTPS, so a browser there will only open a wss:// socket.
+  # For anything beyond localhost you need TLS. Point DUET_DOMAIN at a hostname
+  # that resolves to this machine and run:  docker compose --profile tls up -d
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["tls"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DUET_DOMAIN=${DUET_DOMAIN:?set DUET_DOMAIN to your hostname}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - duet
+
+volumes:
+  caddy_data:
+  caddy_config:

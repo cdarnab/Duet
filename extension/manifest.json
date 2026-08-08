@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Duet — watch together",
+  "version": "1.2.0",
+  "description": "Keeps your video player in step with someone else's, on any site.",
+  "permissions": ["storage", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Duet" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "all_frames": true,
+      "js": ["sync.js", "content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.netflix.com/*"],
+      "all_frames": true,
+      "js": ["main-world.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Duet — watch together, apart</title>
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<main class="wrap">
+  <p class="eyebrow">Two rooms · One reel</p>
+  <h1>Press play <em>together</em>.</h1>
+  <p class="lede">Duet keeps two players on the same frame, down to a tenth of a second, on whatever you're already watching. You each stream from your own account. Duet only carries the timing.</p>
+
+  <div class="card">
+    <p class="eyebrow">Browser extension · <span id="ext-version">v1.2.0</span></p>
+    <h2 style="margin-top:6px">Get the extension</h2>
+    <p>Both people install this in Chrome, Edge, Brave, or Arc. Then set the server to this site and join the same room code.</p>
+    <div class="row">
+      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.2.0</a>
+    </div>
+    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.2.0</span></strong> and the server should already be <code>https://duet.arnabbanik.com</code>.</p>
+    <ol class="small" style="margin-bottom:0; padding-left:1.2em">
+      <li>Unzip the download</li>
+      <li>Open <code>chrome://extensions</code></li>
+      <li>Turn on <strong>Developer mode</strong></li>
+      <li>Remove any older Duet, then <strong>Load unpacked</strong> → select the unzipped folder</li>
+      <li>In the Duet popup, set Server to this website’s URL and enter the room code</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Start a room</h2>
+    <div class="row">
+      <button class="btn primary" id="create">Create a room</button>
+    </div>
+    <p class="small" style="margin-bottom:0">You'll get a six-letter code. Send it to them however you like.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Join a room</h2>
+    <input type="text" id="code" placeholder="ABCDEF" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="join-companion">Open console</button>
+      <button class="btn" id="join-tv">Open on TV</button>
+    </div>
+    <p class="small" style="margin-bottom:0">The console is for your phone or laptop. TV mode is a big-screen view for a smart TV browser or a screen you've cast to.</p>
+  </div>
+
+  <h2>Which setup is yours?</h2>
+
+  <div class="card">
+    <p class="eyebrow">Laptop &amp; laptop</p>
+    <p style="margin:6px 0 0">Install the Duet extension on both browsers. It hooks into whatever video is on screen — Netflix, Prime, YouTube, Disney+, Max, Jellyfin, a local file — and keeps both sides in step. Nothing to configure per service.</p>
+  </div>
+
+  <div class="card">
+    <p class="eyebrow">Laptop &amp; TV — best result</p>
+    <p style="margin:6px 0 0">Run an HDMI cable from the TV person's laptop to the TV, or cast the browser tab. The extension does the syncing; the TV is just a bigger monitor. Every service works, because the browser is still the player.</p>
+  </div>
+
+  <div class="card">
+    <p class="eyebrow">Laptop &amp; native TV app</p>
+    <p style="margin:6px 0 0">A Netflix app on a smart TV can't be driven from outside — no app allows it. Open TV mode there instead and Duet runs a cue console: a shared 3-2-1 countdown, matching timecode, and a plain instruction like <em>skip back 4 seconds</em> when you drift. You press the buttons; Duet tells you exactly when.</p>
+  </div>
+
+  <p class="small" style="margin-top:26px">Duet never copies, relays, or re-streams video. Both of you need your own access to whatever you're watching.</p>
+</main>
+
+<script>
+  const codeInput = document.getElementById('code');
+  codeInput.addEventListener('input', () => {
+    codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  });
+
+  document.getElementById('create').addEventListener('click', async () => {
+    const res = await fetch('/api/room/new');
+    const { code } = await res.json();
+    location.href = `/companion.html#${code}`;
+  });
+
+  const go = (page) => () => {
+    const code = codeInput.value.trim();
+    if (code.length < 4) {
+      codeInput.focus();
+      codeInput.placeholder = 'Enter the six-letter code';
+      return;
+    }
+    location.href = `/${page}#${code}`;
+  };
+  document.getElementById('join-companion').addEventListener('click', go('companion.html'));
+  document.getElementById('join-tv').addEventListener('click', go('tv.html'));
+
+  fetch('/version.json')
+    .then((r) => r.json())
+    .then((info) => {
+      if (!info || !info.version) return;
+      document.getElementById('ext-version').textContent = 'v' + info.version;
+      document.querySelectorAll('.ext-version-copy').forEach((el) => { el.textContent = info.version; });
+      const btn = document.getElementById('download-ext');
+      btn.textContent = 'Download v' + info.version;
+      if (info.zip) btn.href = info.zip;
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

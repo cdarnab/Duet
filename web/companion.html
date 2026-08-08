@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Duet — console</title>
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<main class="wrap">
+  <p class="eyebrow"><span class="dot" id="conn"></span> Room</p>
+  <div class="code" id="roomcode">------</div>
+
+  <!-- Signature: live timecode for both sides, with the drift between them. -->
+  <section class="strip" style="margin-top:16px">
+    <div class="strip-row you">
+      <span class="strip-who">You</span>
+      <span class="strip-tc" id="tc-you">--:--:--.-</span>
+    </div>
+    <div class="rails" aria-hidden="true">
+      <div class="rail you" id="rail-you"></div>
+      <div class="rail them" id="rail-them"></div>
+    </div>
+    <div class="strip-row them">
+      <span class="strip-who" id="them-label">Them</span>
+      <span class="strip-tc" id="tc-them">--:--:--.-</span>
+    </div>
+    <div class="delta" id="delta">
+      <span id="delta-note">Waiting for the other side</span>
+      <b id="delta-val">—</b>
+    </div>
+  </section>
+
+  <div class="row" style="margin-top:14px">
+    <button class="btn primary" id="cue">Count us in</button>
+    <button class="btn" id="resync">Resync</button>
+  </div>
+  <p class="small" id="advice">Both of you press play when the countdown hits zero.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">Voice</h2>
+    <div class="row">
+      <button class="btn" id="voice">Turn on mic</button>
+      <button class="btn" id="mute" disabled>Mute</button>
+    </div>
+    <p class="small" id="voice-state" style="margin-bottom:0">Off. Headphones help — speakers will echo into the mic.</p>
+    <audio id="remote-audio" autoplay></audio>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Notes</h2>
+    <div class="chatlog" id="chatlog"></div>
+    <div class="row" style="margin-top:10px">
+      <input type="text" id="chat" placeholder="Say something" maxlength="500" style="flex:3 1 200px" />
+      <button class="btn" id="send" style="flex:0 0 auto">Send</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Direct video source</h2>
+    <p class="small">Only for TV mode playing a file you host yourself — an .mp4 or .m3u8 URL. Leave this alone if you're watching through a streaming app.</p>
+    <input type="url" id="source" placeholder="https://…/movie.mp4" />
+    <button class="btn wide" id="set-source" style="margin-top:10px">Send to TV</button>
+  </div>
+
+  <p class="small"><a href="/">Back</a> · Share this room by sending the code above.</p>
+</main>
+
+<div class="cue" id="cue-overlay">
+  <div>
+    <div class="cue-n" id="cue-n">3</div>
+    <div class="cue-label">Press play on zero</div>
+  </div>
+</div>
+
+<script src="/shared/sync.js"></script>
+<script src="/duet-client.js"></script>
+<script>
+(function () {
+  const room = (location.hash.slice(1) || '').toUpperCase();
+  if (!room) { location.href = '/'; return; }
+  document.getElementById('roomcode').textContent = room;
+
+  const $ = (id) => document.getElementById(id);
+  const client = new DuetClient({ room, name: 'Console', surface: 'companion' }).connect();
+
+  client.on('status', ({ connected }) => $('conn').classList.toggle('on', connected));
+
+  /* ---------------------------------------------------------- drift meter */
+
+  function paint() {
+    const expected = client.expectedPosition();
+    const them = client.partners().find((m) => m.surface !== 'companion') || client.partners()[0];
+
+    $('tc-you').textContent = DuetSync.timecode(expected);
+    $('them-label').textContent = them ? (them.surface === 'tv' ? 'TV' : 'Their player') : 'Them';
+
+    if (!them) {
+      $('tc-them').textContent = '--:--:--.-';
+      $('delta-note').textContent = 'Waiting for the other side';
+      $('delta-val').textContent = '—';
+      $('delta').classList.remove('locked');
+      return;
+    }
+
+    $('tc-them').textContent = DuetSync.timecode(them.position);
+    const drift = them.position - expected;
+    const ms = Math.round(Math.abs(drift) * 1000);
+    const locked = ms <= DuetSync.constants.DEADBAND * 1000;
+
+    $('delta').classList.toggle('locked', locked);
+    $('delta-val').textContent = locked ? 'In step' : `${drift > 0 ? '+' : '−'}${(ms / 1000).toFixed(2)}s`;
+    $('delta-note').textContent = locked
+      ? 'Same frame'
+      : drift > 0 ? 'They are ahead of you' : 'They are behind you';
+
+    // Rails: nudge each line by its own drift so the gap is visible, not just numeric.
+    const scale = 60; // px per second of drift, clamped
+    $('rail-you').style.transform = 'translateX(0)';
+    $('rail-them').style.transform = `translateX(${Math.max(-40, Math.min(40, drift * scale))}px)`;
+
+    // Plain-language fix for someone driving a TV remote by hand.
+    if (!locked && Math.abs(drift) > 1.5) {
+      const secs = Math.round(Math.abs(drift));
+      $('advice').textContent = drift > 0
+        ? `Their side is ${secs}s ahead — they should skip back ${secs} seconds.`
+        : `Their side is ${secs}s behind — they should skip forward ${secs} seconds.`;
+    } else {
+      $('advice').textContent = 'Both of you press play when the countdown hits zero.';
+    }
+  }
+  setInterval(paint, 200);
+  client.on('roster', paint);
+  client.on('state', paint);
+
+  /* ---------------------------------------------------------------- cues */
+
+  $('cue').addEventListener('click', () => client.cue(3200));
+  $('resync').addEventListener('click', () => {
+    client.resync();
+    $('resync').textContent = 'Sent';
+    $('advice').textContent = 'Asking both players to snap to the room time…';
+    setTimeout(() => ($('resync').textContent = 'Resync'), 1500);
+  });
+  client.on('resync', () => {
+    $('advice').textContent = 'Resync sent — both browsers should jump to the same spot.';
+  });
+
+  client.on('cue', ({ startAt }) => {
+    const overlay = $('cue-overlay');
+    overlay.classList.add('show');
+    const tick = () => {
+      const left = startAt - client.serverNow();
+      if (left <= 0) {
+        $('cue-n').textContent = 'Now';
+        setTimeout(() => overlay.classList.remove('show'), 700);
+        return;
+      }
+      $('cue-n').textContent = String(Math.ceil(left / 1000));
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+
+  /* ---------------------------------------------------------------- chat */
+
+  function addMsg(entry) {
+    const el = document.createElement('div');
+    el.className = 'msg' + (entry.from === client.selfId ? ' mine' : '');
+    el.innerHTML = `<span class="who"></span><br><span class="text"></span>`;
+    el.querySelector('.who').textContent = entry.from === client.selfId ? 'You' : entry.name;
+    el.querySelector('.text').textContent = entry.text;
+    $('chatlog').appendChild(el);
+    $('chatlog').scrollTop = $('chatlog').scrollHeight;
+  }
+  client.on('welcome', (msg) => (msg.chat || []).forEach(addMsg));
+  client.on('chat', addMsg);
+
+  const sendChat = () => {
+    const text = $('chat').value.trim();
+    if (!text) return;
+    client.chat(text);
+    $('chat').value = '';
+  };
+  $('send').addEventListener('click', sendChat);
+  $('chat').addEventListener('keydown', (e) => e.key === 'Enter' && sendChat());
+
+  /* --------------------------------------------------------------- voice */
+
+  let voiceOn = false, muted = false;
+  $('voice').addEventListener('click', async () => {
+    if (voiceOn) {
+      client.stopVoice();
+      voiceOn = false;
+      $('voice').textContent = 'Turn on mic';
+      $('mute').disabled = true;
+      $('voice-state').textContent = 'Off. Headphones help — speakers will echo into the mic.';
+      return;
+    }
+    try {
+      await client.startVoice();
+      voiceOn = true;
+      $('voice').textContent = 'Turn off mic';
+      $('mute').disabled = false;
+      $('voice-state').textContent = 'Connecting…';
+    } catch (err) {
+      $('voice-state').textContent = 'The browser blocked microphone access. Allow it in the address bar, then try again.';
+    }
+  });
+  $('mute').addEventListener('click', () => {
+    muted = !muted;
+    client.setMuted(muted);
+    $('mute').textContent = muted ? 'Unmute' : 'Mute';
+  });
+  client.on('remoteaudio', (stream) => { $('remote-audio').srcObject = stream; });
+  client.on('voicestate', (s) => {
+    $('voice-state').textContent =
+      s === 'connected' ? 'Connected.' :
+      s === 'failed' ? 'Voice could not connect through your networks. A TURN server is needed on strict connections — see the README.' :
+      `Voice: ${s}`;
+  });
+
+  /* -------------------------------------------------------------- source */
+
+  $('set-source').addEventListener('click', () => {
+    const url = $('source').value.trim();
+    if (!url) return;
+    client.setState({ paused: true, position: 0, source: url });
+    $('set-source').textContent = 'Sent';
+    setTimeout(() => ($('set-source').textContent = 'Send to TV'), 1500);
+  });
+})();
+</script>
+</body>
+</html>

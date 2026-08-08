@@ -1,0 +1,21 @@
+{
+  "name": "duet",
+  "version": "1.0.0",
+  "description": "Watch the same movie at the same moment, from two different rooms.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js",
+    "build:extension": "node scripts/build-extension.js",
+    "agent": "node agent/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "license": "MIT",
+  "private": true
+}

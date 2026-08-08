@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Duet — TV</title>
+<link rel="stylesheet" href="/app.css" />
+<style>
+  /* Overscan-safe margins: many TVs crop 3–5% of every edge. */
+  .tv { padding: 5vh 6vw; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+  .tv .eyebrow { font-size: clamp(12px, 1.4vw, 18px); }
+  .bigcode { font-family: var(--mono); font-size: clamp(24px, 3vw, 40px); letter-spacing: 0.24em; color: var(--lamp); }
+  .bigtc {
+    font-family: var(--mono);
+    font-size: clamp(56px, 13vw, 190px);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin: 2vh 0;
+  }
+  .state { font-family: var(--display); font-size: clamp(24px, 4vw, 54px); color: var(--paper); }
+  .state .off { color: var(--dim); }
+  .keys { display: flex; gap: 2vw; flex-wrap: wrap; margin-top: 4vh; }
+  .key {
+    font-family: var(--mono);
+    font-size: clamp(13px, 1.4vw, 20px);
+    padding: 1.4vh 2vw;
+    border: 1px solid var(--haze);
+    border-radius: var(--r);
+    background: var(--velvet);
+    color: var(--paper);
+    cursor: pointer;
+  }
+  .key:focus-visible { outline: 3px solid var(--lamp); outline-offset: 3px; }
+  .key b { color: var(--lamp); font-weight: 500; }
+  video { width: 100%; max-height: 78vh; background: #000; border-radius: var(--r); }
+  .hide { display: none !important; }
+  .toast {
+    position: fixed; left: 50%; bottom: 6vh; transform: translateX(-50%);
+    font-family: var(--mono); font-size: clamp(14px, 1.6vw, 22px);
+    background: var(--velvet); border: 1px solid var(--haze); color: var(--paper);
+    padding: 1.2vh 2.4vw; border-radius: var(--r); opacity: 0; transition: opacity 200ms ease;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- Mode A: a direct media source is set, so this page is the player. -->
+<section class="tv hide" id="player-mode">
+  <video id="video" playsinline></video>
+  <p class="eyebrow" id="player-status" style="margin-top:2vh">Loading</p>
+</section>
+
+<!-- Mode B: the movie is playing in a native TV app. This is the cue console. -->
+<section class="tv" id="console-mode">
+  <p class="eyebrow">Duet · Room</p>
+  <div class="bigcode" id="roomcode">------</div>
+
+  <div class="bigtc" id="tc">--:--:--.-</div>
+  <div class="state" id="state">Paused <span class="off">— start your app, then count in</span></div>
+
+  <div class="keys">
+    <button class="key" id="k-cue" autofocus><b>OK</b> · Count us in</button>
+    <button class="key" id="k-back"><b>◀</b> · Shift room back 1s</button>
+    <button class="key" id="k-fwd"><b>▶</b> · Shift room forward 1s</button>
+    <button class="key" id="k-toggle"><b>⏯</b> · Play / pause for both</button>
+  </div>
+
+  <p class="small" style="margin-top:4vh; max-width:60ch">
+    Match the timecode above to the one in your app. If you're behind, shift the room back until they line up — the other side follows automatically.
+  </p>
+</section>
+
+<div class="cue" id="cue-overlay">
+  <div>
+    <div class="cue-n" id="cue-n">3</div>
+    <div class="cue-label">Press play on zero</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/shared/sync.js"></script>
+<script src="/duet-client.js"></script>
+<script>
+(function () {
+  const room = (location.hash.slice(1) || '').toUpperCase();
+  if (!room) { location.href = '/'; return; }
+
+  const $ = (id) => document.getElementById(id);
+  $('roomcode').textContent = room;
+
+  const client = new DuetClient({ room, name: 'TV', surface: 'tv' }).connect();
+  const video = $('video');
+  let hasSource = false;
+  let applyingRemote = 0; // suppress echo while we drive the player ourselves
+
+  function toast(text) {
+    $('toast').textContent = text;
+    $('toast').classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => $('toast').classList.remove('show'), 1800);
+  }
+
+  /* ------------------------------------------------------- mode switching */
+
+  function applySource(src) {
+    if (!src || src === video.dataset.src) return;
+    video.dataset.src = src;
+    hasSource = true;
+    $('player-mode').classList.remove('hide');
+    $('console-mode').classList.add('hide');
+    video.src = src;
+    video.controls = true;
+    $('player-status').textContent = 'Source loaded — synced to the room';
+  }
+
+  /* ----------------------------------------------------- player-mode sync */
+
+  function driveVideo() {
+    if (!hasSource || !video.readyState) return;
+    const c = DuetSync.correction({
+      state: client.state,
+      serverNow: client.serverNow(),
+      localPosition: video.currentTime,
+      duration: video.duration,
+    });
+    if (c.action === 'seek') video.currentTime = c.target;
+    if (c.action === 'rate') video.playbackRate = c.rate;
+    if (client.state.paused && !video.paused) { applyingRemote = Date.now() + 600; video.pause(); }
+    if (!client.state.paused && video.paused) {
+      applyingRemote = Date.now() + 600;
+      video.play().catch(() => { $('player-status').textContent = 'The browser blocked autoplay — press play once to allow it.'; });
+    }
+  }
+
+  ['play', 'pause', 'seeked'].forEach((ev) =>
+    video.addEventListener(ev, () => {
+      if (Date.now() < applyingRemote) return;
+      client.setState({ paused: video.paused, position: video.currentTime, rate: 1 });
+    })
+  );
+
+  /* ------------------------------------------------------ console readout */
+
+  function paint() {
+    const expected = client.expectedPosition();
+    $('tc').textContent = DuetSync.timecode(expected);
+    $('state').innerHTML = client.state.paused
+      ? 'Paused <span class="off">— count in when you\'re ready</span>'
+      : 'Playing';
+    if (hasSource) driveVideo();
+    client.tick(hasSource ? video.currentTime : expected, client.state.paused, document.title);
+  }
+  setInterval(paint, 250);
+
+  client.on('state', () => { applySource(client.state.source); paint(); });
+  client.on('welcome', () => applySource(client.state.source));
+  client.on('resync', () => {
+    if (hasSource) {
+      applyingRemote = Date.now() + 800;
+      video.currentTime = client.expectedPosition();
+      toast('Resynced');
+    } else {
+      toast('Match this timecode');
+    }
+    paint();
+  });
+
+  /* -------------------------------------------------------------- controls */
+
+  const shift = (delta) => {
+    client.setState({
+      paused: client.state.paused,
+      position: Math.max(0, client.expectedPosition() + delta),
+      rate: 1,
+    });
+    toast(delta > 0 ? 'Room moved forward 1s' : 'Room moved back 1s');
+  };
+  const toggle = () => {
+    client.setState({ paused: !client.state.paused, position: client.expectedPosition(), rate: 1 });
+  };
+
+  $('k-cue').addEventListener('click', () => client.cue(3200));
+  $('k-back').addEventListener('click', () => shift(-1));
+  $('k-fwd').addEventListener('click', () => shift(1));
+  $('k-toggle').addEventListener('click', toggle);
+
+  // TV remotes send arrow keys and Enter. Make those do the obvious thing.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') { shift(-1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { shift(1); e.preventDefault(); }
+    else if (e.key === ' ') { toggle(); e.preventDefault(); }
+    else if (e.key === 'Enter' && document.activeElement === document.body) { client.cue(3200); }
+  });
+
+  /* ------------------------------------------------------------ countdown */
+
+  client.on('cue', ({ startAt }) => {
+    const overlay = $('cue-overlay');
+    overlay.classList.add('show');
+    const tick = () => {
+      const left = startAt - client.serverNow();
+      if (left <= 0) {
+        $('cue-n').textContent = 'Now';
+        if (hasSource) video.play().catch(() => {});
+        setTimeout(() => overlay.classList.remove('show'), 800);
+        return;
+      }
+      $('cue-n').textContent = String(Math.ceil(left / 1000));
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+
+  // TV browsers dim the screen during long playback pauses; keep it awake.
+  if ('wakeLock' in navigator) {
+    navigator.wakeLock.request('screen').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
