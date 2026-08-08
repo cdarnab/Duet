@@ -20,33 +20,56 @@
     border: 1px solid var(--haze); background: #070a13; color: var(--paper);
     font: 400 14px/1 ui-monospace, monospace;
   }
-  button {
+  button, a.btn {
     width: 100%; padding: 10px; margin-top: 10px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--haze); background: var(--velvet); color: var(--paper);
     font: 500 14px/1 ui-sans-serif, system-ui, sans-serif;
+    text-decoration: none; display: inline-block; text-align: center; box-sizing: border-box;
   }
-  button.primary { background: var(--lamp); border-color: var(--lamp); color: #1a1206; }
+  button.primary, a.btn.primary { background: var(--lamp); border-color: var(--lamp); color: #1a1206; }
   .status { display: flex; align-items: center; gap: 7px; margin-top: 14px; font-size: 13px; color: var(--dim); }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: #4a5170; }
   .dot.on { background: var(--good); }
   .readout { font: 400 12px/1.6 ui-monospace, monospace; color: var(--dim); margin-top: 8px; }
   .readout b { color: var(--paper); font-weight: 500; }
   a { color: var(--lamp); font-size: 12px; }
+  .code {
+    font: 400 28px/1.1 ui-monospace, monospace; letter-spacing: 0.16em;
+    color: var(--lamp); margin: 8px 0 4px;
+  }
+  .host, .people { font-size: 13px; color: var(--dim); margin: 0 0 2px; }
+  .host b, .people b { color: var(--paper); font-weight: 500; }
+  .share-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 2px; }
+  .share-row button, .share-row a.btn { width: auto; flex: 1 1 40%; margin-top: 0; font-size: 13px; padding: 8px 10px; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-  <p class="eyebrow">Duet · 1.6.0</p>
+  <p class="eyebrow">Duet · 1.8.0</p>
   <h1>Watch together</h1>
 
-  <button class="primary" id="create">Create room</button>
+  <div id="idle">
+    <button class="primary" id="create">Create room</button>
+    <label for="room">Room code</label>
+    <input id="room" type="text" placeholder="6-letter code" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+    <button id="join">Join room</button>
+  </div>
 
-  <label for="room">Room code</label>
-  <input id="room" type="text" placeholder="6-letter code" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" />
-
-  <button id="join">Join room</button>
-  <button id="cue">Count us in</button>
-  <button id="resync">Resync</button>
-  <button id="leave">Leave</button>
+  <div id="in-room" hidden>
+    <p class="eyebrow">Your room</p>
+    <div class="code" id="room-display">------</div>
+    <p class="host" id="host-line"></p>
+    <p class="people" id="people-line"></p>
+    <div class="share-row">
+      <button type="button" id="share-copy">Copy link</button>
+      <a class="btn" id="share-messages" target="_blank" rel="noreferrer">Messages</a>
+      <a class="btn" id="share-email" target="_blank" rel="noreferrer">Email</a>
+      <button type="button" id="share-sheet" hidden>Share…</button>
+    </div>
+    <button id="cue">Count us in</button>
+    <button id="resync">Resync</button>
+    <button id="leave">Leave room</button>
+  </div>
 
   <div class="status"><span class="dot" id="dot"></span><span id="status-text">Not connected</span></div>
   <div class="readout" id="readout"></div>

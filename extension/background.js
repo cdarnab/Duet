@@ -31,6 +31,8 @@ chrome.storage.local.get(['duetConfig']).then((res) => {
 let authRequired = false;
 let connectGen = 0;
 let reconnectTimer = 0;
+let roomCreator = null;
+let members = [];
 
 function socketUrl() {
   const base = config.server.replace(/\/+$/, '');
@@ -108,10 +110,19 @@ function connect() {
       connected = true;
       selfId = msg.selfId;
       roomState = msg.state;
-      fanout({ type: 'status', connected: true, room: config.room });
+      roomCreator = msg.creator || null;
+      members = msg.members || [];
+      fanout({ type: 'status', connected: true, room: config.room, creator: roomCreator, members });
+    }
+    if (msg.type === 'joined') {
+      if (msg.creator) roomCreator = msg.creator;
+      members = [...members.filter((m) => m.id !== msg.member?.id), msg.member].filter(Boolean);
+    }
+    if (msg.type === 'left') {
+      members = members.filter((m) => m.id !== msg.id);
     }
     if (msg.type === 'state') roomState = msg.state;
-    fanout({ ...msg, selfId, offset: clock.offset });
+    fanout({ ...msg, selfId, offset: clock.offset, creator: roomCreator, members });
   };
 
   next.onclose = () => {
@@ -164,11 +175,19 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => ports.delete(port));
 });
 
+chrome.runtime.onMessageExternal.addListener((msg, _sender, reply) => {
+  if (msg && msg.type === 'duetPing') {
+    reply({ ok: true, version: chrome.runtime.getManifest().version, name: chrome.runtime.getManifest().name });
+    return true;
+  }
+  return false;
+});
+
 /* ------------------------------------------------------------------ popup */
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === 'getStatus') {
-    reply({ connected, config, selfId, state: roomState, offset: clock.offset, rtt: clock.rtt, authRequired });
+    reply({ connected, config, selfId, state: roomState, offset: clock.offset, rtt: clock.rtt, authRequired, creator: roomCreator, members });
     return true;
   }
   if (msg.type === 'setConfig') {
@@ -205,8 +224,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
         config.room = code;
         chrome.storage.local.set({ duetConfig: config });
         authRequired = false;
+        roomCreator = body.creator || null;
+        members = [];
         connect();
-        reply({ ok: true, config, code });
+        reply({ ok: true, config, code, creator: roomCreator, joinUrl: body.joinUrl || `/r/${code}` });
       } catch {
         reply({ ok: false });
       }
@@ -222,6 +243,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     socket = null;
     connected = false;
     authRequired = false;
+    roomCreator = null;
+    members = [];
     fanout({ type: 'status', connected: false, room: '' });
     reply({ ok: true });
     return true;

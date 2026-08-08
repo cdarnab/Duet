@@ -42,10 +42,29 @@ test.after(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('extension install assets are public', async () => {
+  const version = await fetch(`${base()}/version.json`);
+  assert.strictEqual(version.status, 200);
+  const info = await version.json();
+  assert.match(info.version, /^\d+\.\d+\.\d+$/);
+
+  const script = await fetch(`${base()}/install-duet.sh`);
+  assert.strictEqual(script.status, 200);
+  assert.match(await script.text(), /Library\/Application Support\/Duet\/extension/);
+
+  const files = await fetch(`${base()}/api/extension/files`);
+  assert.strictEqual(files.status, 200);
+  const listing = await files.json();
+  assert.ok(listing.files.includes('manifest.json'));
+  const manifest = await fetch(`${base()}/extension-dist/manifest.json`);
+  assert.strictEqual(manifest.status, 200);
+  assert.match(await manifest.text(), /"manifest_version"/);
+});
+
 test('unauthenticated visitors are sent to login', async () => {
   const res = await fetch(`${base()}/`, { redirect: 'manual' });
   assert.strictEqual(res.status, 302);
-  assert.strictEqual(res.headers.get('location'), '/login');
+  assert.match(res.headers.get('location'), /^\/login(\?next=|$)/);
 });
 
 test('room API requires a session', async () => {
@@ -112,6 +131,25 @@ test('owner setup, login, invite, and invited user can create a room', async () 
   assert.strictEqual(room.status, 200);
   const body = await room.json();
   assert.match(body.code, /^[A-Z0-9]{6}$/);
+  assert.strictEqual(body.creator.name, 'Samira');
+  assert.match(body.joinUrl, /^\/r\/[A-Z0-9]{6}$/);
+
+  const page = await fetch(`${base()}${body.joinUrl}`, { headers: withCookie() });
+  assert.strictEqual(page.status, 200);
+  assert.match(await page.text(), /Join this room/);
+});
+
+test('a device agent with a session can join a room', async () => {
+  assert.ok(cookie, 'previous test should leave a session cookie');
+  const token = cookie.replace(/^duet_session=/, '');
+
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+  await new Promise((resolve) => ws.on('open', resolve));
+  ws.send(JSON.stringify({ type: 'hello', room: 'ROKUAA', name: 'Living room', surface: 'device', session: token }));
+  const msg = await new Promise((resolve) => ws.on('message', (raw) => resolve(JSON.parse(raw))));
+  assert.strictEqual(msg.type, 'welcome');
+  assert.strictEqual(msg.room, 'ROKUAA');
+  ws.close();
 });
 
 test('owner can disable, reset, and delete a member', async () => {

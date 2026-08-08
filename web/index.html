@@ -16,20 +16,20 @@
   <h1>Press play <em>together</em>.</h1>
   <p class="lede">Duet keeps two players on the same frame, down to a tenth of a second, on whatever you're already watching. You each stream from your own account. Duet only carries the timing.</p>
 
-  <div class="card">
-    <p class="eyebrow">Browser extension · <span id="ext-version">v1.6.0</span></p>
+  <div class="card" id="ext-card">
+    <p class="eyebrow">Browser extension · <span id="ext-version">v1.8.0</span></p>
     <h2 style="margin-top:6px">Get the extension</h2>
-    <p>Both people install this in Chrome, Edge, Brave, or Arc, then join the same room code.</p>
+    <p id="ext-status" class="lede">Checking this Mac…</p>
     <div class="row">
-      <a class="btn primary" id="download-ext" href="/duet-extension.zip">Download v1.6.0</a>
+      <button class="btn primary" id="ext-action" type="button">Install Extension</button>
     </div>
-    <p class="small">Chrome does not allow websites to auto-install extensions. Download the zip, then load it unpacked. After install, the popup should say <strong>Duet · <span class="ext-version-copy">1.6.0</span></strong>.</p>
-    <ol class="small" style="margin-bottom:0; padding-left:1.2em">
-      <li>Unzip the download</li>
-      <li>Open <code>chrome://extensions</code></li>
-      <li>Turn on <strong>Developer mode</strong></li>
-      <li>Remove any older Duet, then <strong>Load unpacked</strong> → select the unzipped folder</li>
-      <li>In the Duet popup, create a room or enter the code and join</li>
+    <pre class="install-cmd" id="install-cmd" hidden></pre>
+    <p class="small" id="ext-hint">One click saves Duet on this Mac. Chrome still needs Load unpacked once.</p>
+    <ol class="small" id="ext-steps" style="margin-bottom:0; padding-left:1.2em">
+      <li>Click <strong>Install Extension</strong> and choose or create a folder named <strong>Duet</strong> (Documents is best)</li>
+      <li>Open <code>chrome://extensions</code> and turn on <strong>Developer mode</strong></li>
+      <li><strong>Load unpacked</strong> → that Duet folder → <code>extension</code></li>
+      <li>The popup should say <strong>Duet · <span class="ext-version-copy">1.8.0</span></strong></li>
     </ol>
   </div>
 
@@ -46,7 +46,7 @@
     <div class="row">
       <button class="btn primary" id="create">Create a room</button>
     </div>
-    <p class="small" style="margin-bottom:0">You'll get a six-letter code. Send it to them however you like.</p>
+    <p class="small" style="margin-bottom:0">You'll get a six-letter code and a link you can send by Messages or email.</p>
   </div>
 
   <div class="card">
@@ -79,6 +79,7 @@
   <p class="small" style="margin-top:26px">Duet never copies, relays, or re-streams video. Both of you need your own access to whatever you're watching.</p>
 </main>
 
+<script src="/extension-status.js"></script>
 <script>
   const codeInput = document.getElementById('code');
   const sanitizeRoom = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
@@ -94,7 +95,7 @@
     const res = await fetch('/api/room/new');
     if (res.status === 401) { location.href = '/login'; return; }
     const { code } = await res.json();
-    location.href = `/companion.html#${code}`;
+    location.href = `/r/${code}`;
   });
 
   const go = (page) => () => {
@@ -161,11 +162,10 @@
     .then((r) => r.json())
     .then((info) => {
       if (!info || !info.version) return;
-      document.getElementById('ext-version').textContent = 'v' + info.version;
-      document.querySelectorAll('.ext-version-copy').forEach((el) => { el.textContent = info.version; });
-      const btn = document.getElementById('download-ext');
-      btn.textContent = 'Download v' + info.version;
-      if (info.zip) btn.href = info.zip;
+      window.DuetExtensionStatus.refresh(info);
+      document.getElementById('ext-action').addEventListener('click', () => {
+        window.DuetExtensionStatus.runInstall(location.origin, info);
+      });
     })
     .catch(() => {});
 </script>

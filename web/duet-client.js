@@ -15,6 +15,7 @@
       this.url = url || defaultSocketUrl();
       this.clock = new ClockSync();
       this.selfId = null;
+      this.creator = null;
       this.members = new Map();
       this.state = { paused: true, position: 0, rate: 1, atServerTime: Date.now(), seq: 0 };
       this.connected = false;
@@ -82,11 +83,13 @@
           this.selfId = msg.selfId;
           this.room = msg.room;
           this.state = msg.state;
+          this.creator = msg.creator || null;
           this.members = new Map(msg.members.map((m) => [m.id, m]));
           this.emit('welcome', msg);
           this.emit('roster', this.roster());
           break;
         case 'joined':
+          if (msg.creator) this.creator = msg.creator;
           this.members.set(msg.member.id, msg.member);
           this.emit('roster', this.roster());
           this.emit('joined', msg.member);

@@ -13,6 +13,7 @@
 <main class="wrap">
   <p class="eyebrow"><span class="dot" id="conn"></span> Room</p>
   <div class="code" id="roomcode">------</div>
+  <p class="small" id="host-line" style="margin:8px 0 0"></p>
 
   <!-- Signature: live timecode for both sides, with the drift between them. -->
   <section class="strip" style="margin-top:16px">
@@ -66,7 +67,7 @@
     <button class="btn wide" id="set-source" style="margin-top:10px">Send to TV</button>
   </div>
 
-  <p class="small"><a href="/">Back</a> · Share this room by sending the code above.</p>
+  <p class="small"><a href="/">Back</a> · <a id="share-page" href="#">Share this room</a></p>
 </main>
 
 <div class="cue" id="cue-overlay">
@@ -83,6 +84,7 @@
   const room = (location.hash.slice(1) || '').toUpperCase();
   if (!room) { location.href = '/'; return; }
   document.getElementById('roomcode').textContent = room;
+  document.getElementById('share-page').href = `/r/${room}`;
 
   const $ = (id) => document.getElementById(id);
   const client = new DuetClient({ room, name: 'Console', surface: 'companion' }).connect();
@@ -96,7 +98,11 @@
     const them = client.partners().find((m) => m.surface !== 'companion') || client.partners()[0];
 
     $('tc-you').textContent = DuetSync.timecode(expected);
-    $('them-label').textContent = them ? (them.surface === 'tv' ? 'TV' : 'Their player') : 'Them';
+    const host = client.roster().find((m) => m.host) || client.creator;
+    $('host-line').textContent = host?.name ? `Hosted by ${host.name}` : '';
+    $('them-label').textContent = them
+      ? `${them.name || (them.surface === 'tv' ? 'TV' : 'Their player')}${them.host ? ' · host' : ''}`
+      : 'Them';
 
     if (!them) {
       $('tc-them').textContent = '--:--:--.-';

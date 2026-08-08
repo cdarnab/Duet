@@ -29,6 +29,8 @@ class Member {
     this.paused = true;
     this.lastSeen = Date.now();
     this.title = null;
+    this.userId = null;
+    this.email = null;
   }
 
   toPublic() {
@@ -45,11 +47,12 @@ class Member {
 }
 
 class Room {
-  constructor(code) {
+  constructor(code, creator = null) {
     this.code = code;
     this.members = new Map();
     this.chat = [];
     this.createdAt = Date.now();
+    this.creator = creator;
     this.state = {
       paused: true,
       position: 0,
@@ -93,8 +96,37 @@ class Room {
     return entry;
   }
 
+  publicCreator() {
+    if (!this.creator || !this.creator.name) return null;
+    return { name: this.creator.name, userId: this.creator.userId || null };
+  }
+
+  isHost(member) {
+    if (!this.creator || !member) return false;
+    if (this.creator.userId && member.userId) return this.creator.userId === member.userId;
+    if (this.creator.email && member.email) return this.creator.email === member.email;
+    return this.creator.memberId === member.id;
+  }
+
+  claimCreator(member) {
+    if (!member) return;
+    if (this.creator && (this.creator.userId || this.creator.memberId)) {
+      if (this.isHost(member)) {
+        this.creator.memberId = member.id;
+        this.creator.name = member.name || this.creator.name;
+      }
+      return;
+    }
+    this.creator = {
+      userId: member.userId || null,
+      email: member.email || null,
+      name: member.name,
+      memberId: member.id,
+    };
+  }
+
   roster() {
-    return [...this.members.values()].map((m) => m.toPublic());
+    return [...this.members.values()].map((m) => ({ ...m.toPublic(), host: this.isHost(m) }));
   }
 }
 
@@ -103,10 +135,10 @@ class RoomStore {
     this.rooms = new Map();
   }
 
-  create() {
+  create(creator = null) {
     let code = makeCode();
     while (this.rooms.has(code)) code = makeCode();
-    const room = new Room(code);
+    const room = new Room(code, creator);
     this.rooms.set(code, room);
     return room;
   }

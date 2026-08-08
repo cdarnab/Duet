@@ -15,12 +15,13 @@ const { planCorrection, planDuration } = require('./control');
 const { PositionEstimator } = require('./estimator');
 
 class Agent extends EventEmitter {
-  constructor({ server, room, driver, name, pollMs = 1500, tolerance, readLagSec = 0 }) {
+  constructor({ server, room, driver, name, session = '', pollMs = 1500, tolerance, readLagSec = 0 }) {
     super();
     this.server = server.replace(/\/+$/, '');
     this.room = room.toUpperCase();
     this.driver = driver;
     this.name = name || driver.label || 'TV';
+    this.session = session || '';
     this.pollMs = pollMs;
     this.tolerance = tolerance;
 
@@ -36,6 +37,7 @@ class Agent extends EventEmitter {
     this.busy = false; // a correction plan is mid-execution
     this.lastDrift = null;
     this.holdingRoom = false;
+    this._assumedPaused = true;
     this.stopped = false;
     this._timers = [];
   }
@@ -48,7 +50,13 @@ class Agent extends EventEmitter {
 
     this.ws.on('open', () => {
       this.connected = true;
-      this._send({ type: 'hello', room: this.room, name: this.name, surface: 'device' });
+      this._send({
+        type: 'hello',
+        room: this.room,
+        name: this.name,
+        surface: 'device',
+        session: this.session,
+      });
       this._ping();
       this.emit('status', { connected: true });
     });
@@ -92,6 +100,15 @@ class Agent extends EventEmitter {
         break;
       case 'cue':
         this._runCue(msg.startAt);
+        break;
+      case 'error':
+        if (msg.error === 'auth_required') {
+          this.stopped = true;
+          this.emit('error', new Error('This Duet is invite-only. Pass --email and --password (or --session).'));
+          try { this.ws.close(); } catch {}
+        } else {
+          this.emit('error', new Error(msg.error || 'server error'));
+        }
         break;
     }
   }

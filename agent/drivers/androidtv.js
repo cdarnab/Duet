@@ -21,9 +21,36 @@ const KEY = {
   rewind: 89,
 };
 
+/** Parse dumpsys media_session. Prefer a Netflix session when several exist. */
+function parseMediaSession(dump, prefer = /netflix/i) {
+  if (!dump) return null;
+  const chunks = String(dump).split(/(?=Session\s+#)/i);
+  const hits = [];
+  for (const chunk of chunks) {
+    const match =
+      /state=PlaybackState\s*\{state=(\d+),\s*position=(\d+)[\s\S]*?updated=(\d+)/.exec(chunk) ||
+      /state=PlaybackState\s*\{state=(\d+),\s*position=(\d+)/.exec(chunk);
+    if (!match) continue;
+    hits.push({
+      state: Number(match[1]),
+      positionMs: Number(match[2]),
+      updatedAt: match[3] ? Number(match[3]) : null,
+      preferred: prefer.test(chunk),
+    });
+  }
+  const hit = hits.sort((a, b) => Number(b.preferred) - Number(a.preferred))[0];
+  if (!hit) return null;
+  return {
+    position: hit.positionMs / 1000,
+    paused: hit.state !== 3,
+    updatedAt: hit.updatedAt,
+  };
+}
+
 class AndroidTvDriver {
-  constructor({ host, port = 5555, adb = 'adb', jumpBack = 10, jumpForward = 10 }) {
-    this.name = 'androidtv';
+  constructor({ host, port = 5555, adb = 'adb', jumpBack = 10, jumpForward = 10, flavor = 'androidtv' }) {
+    this.name = flavor === 'nebula' ? 'nebula' : 'androidtv';
+    this.flavor = flavor === 'nebula' ? 'nebula' : 'androidtv';
     this.serial = `${host}:${port}`;
     this.adb = adb;
     this.label = this.serial;
@@ -50,15 +77,15 @@ class AndroidTvDriver {
   }
 
   play() {
-    return this._key(KEY.play);
+    return this._key(this.flavor === 'nebula' ? KEY.playPause : KEY.play);
   }
 
   pause() {
-    return this._key(KEY.pause);
+    return this._key(this.flavor === 'nebula' ? KEY.playPause : KEY.pause);
   }
 
   resume() {
-    return this._key(KEY.play);
+    return this._key(this.flavor === 'nebula' ? KEY.playPause : KEY.play);
   }
 
   async jump(dir, times = 1) {
@@ -76,19 +103,15 @@ class AndroidTvDriver {
   async position() {
     try {
       const out = await this._shell('dumpsys media_session');
-      const match = /state=PlaybackState\s*\{state=(\d+),\s*position=(\d+),[^}]*updated=(\d+)/.exec(out);
-      if (!match) return null;
+      const parsed = parseMediaSession(out);
+      if (!parsed) return null;
 
-      const state = Number(match[1]);
-      let position = Number(match[2]) / 1000;
-      const updatedAt = Number(match[3]);
-      const paused = state !== 3; // 3 == STATE_PLAYING
-
+      let position = parsed.position;
       const uptime = await this._uptimeMs();
-      if (!paused && uptime && updatedAt) {
-        position += Math.max(0, (uptime - updatedAt) / 1000);
+      if (!parsed.paused && uptime && parsed.updatedAt) {
+        position += Math.max(0, (uptime - parsed.updatedAt) / 1000);
       }
-      return { position, paused };
+      return { position, paused: parsed.paused };
     } catch {
       return null;
     }
@@ -116,4 +139,4 @@ class AndroidTvDriver {
   }
 }
 
-module.exports = { AndroidTvDriver, KEY };
+module.exports = { AndroidTvDriver, KEY, parseMediaSession };
