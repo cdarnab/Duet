@@ -22,9 +22,11 @@ service, because they all use a standard HTML5 video element under the hood.
 Those apps are sealed and DRM-protected — nothing can read their playhead or
 mirror their picture. But the *device* underneath them is not sealed. Roku
 answers HTTP on port 8060, Android TV takes ADB key events, and Apple TV speaks
-MediaRemote. So Duet ships an agent you run on any machine in the same house:
-it joins the room as a member, reads where the TV actually is, and presses the
-right buttons at the right moments. Automatic, closed-loop, no hands.
+MediaRemote. Duet ships an agent you run on any machine in the same house. When
+the native app exposes a real playhead the agent can correct drift; when it does
+not (notably native Netflix on Fire TV, Roku, and Nebula), the agent can only
+mirror play/pause and coordinate a fresh countdown. It cannot measure or seek
+an exact movie position that Netflix does not publish.
 
 Where even that is unavailable, TV mode falls back to a **cue console**: a shared
 countdown, a live timecode to match, and instructions like *skip back 4 seconds*.
@@ -35,7 +37,8 @@ countdown, a live timecode to match, and instructions like *skip back 4 seconds*
 | Laptop → TV over HDMI, or a cast tab | Same; the TV is just a monitor | ~80 ms, automatic |
 | Smart TV browser + a direct video URL | TV mode plays and syncs it itself | ~80 ms, automatic |
 | Apple TV + agent | pyatv, real absolute seek | under 1 s, automatic |
-| Roku or Android TV / Fire TV + agent | Skips plus timed pauses | under 1 s, automatic |
+| Roku / Fire TV / Nebula native Netflix + agent | Play/pause + acknowledged countdown | aligned start; drift is not measurable |
+| Android TV app that exposes a live playhead | Skips plus timed pauses | around 1 s, automatic |
 | Anything else on a TV | Cue console: countdown, timecode, nudges | ~1 s, hands-on |
 
 **If you want the least fuss, use the HDMI row.** A cable and the extension beat

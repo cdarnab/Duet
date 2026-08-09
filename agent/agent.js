@@ -42,6 +42,9 @@ class Agent extends EventEmitter {
     this._cueUntil = 0;
     this._deviceStable = false;
     this._stableSince = 0;
+    this._tickInFlight = false;
+    this._tickPromise = Promise.resolve();
+    this._transportChain = Promise.resolve();
     this.stopped = false;
     this._timers = [];
   }
@@ -97,15 +100,15 @@ class Agent extends EventEmitter {
         this.selfId = msg.selfId;
         this.state = msg.state;
         this.emit('joined', msg);
-        this._followRoomNow().catch((err) => this.emit('error', err));
+        this._enqueueTransport(() => this._followRoomNow()).catch((err) => this.emit('error', err));
         break;
       case 'state':
         this.state = msg.state;
         this.emit('roomstate', msg.state);
         if (msg.resync) {
-          this._resync().catch((err) => this.emit('error', err));
+          this._enqueueTransport(() => this._resync(msg.resyncId)).catch((err) => this.emit('error', err));
         } else if (!msg.self) {
-          this._followRoomNow().catch((err) => this.emit('error', err));
+          this._enqueueTransport(() => this._followRoomNow()).catch((err) => this.emit('error', err));
         }
         break;
       case 'cue':
@@ -151,7 +154,15 @@ class Agent extends EventEmitter {
 
   /** One pass: read the device, mirror transport, correct drift. */
   async tick() {
-    if (this.busy || !this.connected || this.state.seq < 0) return;
+    if (this._tickInFlight || this.busy || !this.connected || this.state.seq < 0) return;
+    this._tickInFlight = true;
+    this._tickPromise = this._tickOnce().finally(() => {
+      this._tickInFlight = false;
+    });
+    await this._tickPromise;
+  }
+
+  async _tickOnce() {
 
     const reading = await this.driver.position();
     const expected = this.expectedPosition();
@@ -266,6 +277,32 @@ class Agent extends EventEmitter {
     this._stableSince = 0;
   }
 
+  _enqueueTransport(fn) {
+    const afterPoll = async () => {
+      await this._tickPromise;
+      return fn();
+    };
+    const next = this._transportChain.then(afterPoll, afterPoll);
+    this._transportChain = next.catch(() => {});
+    return next;
+  }
+
+  async _commandTransport(paused, { force = false } = {}) {
+    if (!force && paused === this._assumedPaused) return false;
+    const before = this._assumedPaused;
+    this._markCommanded(paused);
+    try {
+      await (paused ? this.driver.pause() : this.driver.play());
+      return true;
+    } catch (err) {
+      // A failed ADB write is not a state change. Rolling this back lets the
+      // next room event or poll retry instead of believing the missed key.
+      this._assumedPaused = before;
+      this._commandUntil = 0;
+      throw err;
+    }
+  }
+
   /** Laptop pause/play should hit the TV immediately, not on the next poll. */
   async _followRoomNow() {
     if (this.busy || this.holdingRoom || this.stopped || this.state.seq < 0) return;
@@ -273,12 +310,7 @@ class Agent extends EventEmitter {
     if (this.state.paused === this._assumedPaused) return;
     this.busy = true;
     try {
-      for (let i = 0; i < 2; i++) {
-        if (this.state.paused === this._assumedPaused) break;
-        const want = this.state.paused;
-        this._markCommanded(want);
-        await (want ? this.driver.pause() : this.driver.play());
-      }
+      await this._commandTransport(this.state.paused);
     } finally {
       this.busy = false;
     }
@@ -290,8 +322,7 @@ class Agent extends EventEmitter {
     // Follow the laptop when room state changed. Do not use a noisy TV reading
     // to press keys — that undoes the Fire remote and skips play after pause.
     if (this.state.paused !== this._assumedPaused) {
-      this._markCommanded(this.state.paused);
-      await (this.state.paused ? this.driver.pause() : this.driver.play());
+      await this._commandTransport(this.state.paused);
     }
   }
 
@@ -341,14 +372,13 @@ class Agent extends EventEmitter {
    * Open-loop TVs cannot seek. Resync means: pause everyone, then count in.
    * That is the only snap that actually works on Nebula’s Netflix APK.
    */
-  async _resync() {
+  async _resync(resyncId) {
     this.emit('status', { connected: true });
     this.emit('manual', { note: 'Resync: pausing the TV, then counting in' });
     this.busy = true;
     try {
-      const alreadyPaused = this._assumedPaused;
-      this._markCommanded(true);
-      if (!alreadyPaused) await this.driver.pause();
+      await this._commandTransport(true);
+      if (resyncId) this._send({ type: 'resync-ready', resyncId });
     } finally {
       this.estimator.reset();
       this.busy = false;
@@ -362,8 +392,11 @@ class Agent extends EventEmitter {
     this._cueUntil = startAt + 800;
     this.emit('cue', { startAt, wait });
     this._later(async () => {
-      this._markCommanded(false);
-      await this.driver.play();
+      try {
+        await this._enqueueTransport(() => this._commandTransport(false, { force: true }));
+      } catch (err) {
+        this.emit('error', err);
+      }
     }, Math.max(0, wait));
   }
 

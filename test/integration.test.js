@@ -297,6 +297,34 @@ test('resync broadcasts current room state to every member', async () => {
   b.close();
 });
 
+test('resync waits for a device acknowledgement and then makes play canonical', async () => {
+  await ensureServer();
+  const room = 'TESTRI';
+  const browser = connect();
+  const device = connect();
+  await Promise.all([browser.open(), device.open()]);
+  browser.send({ type: 'hello', room, name: 'A', surface: 'browser' });
+  device.send({ type: 'hello', room, name: 'TV', surface: 'device' });
+  await Promise.all([
+    browser.next((m) => m.type === 'welcome'),
+    device.next((m) => m.type === 'welcome'),
+  ]);
+
+  browser.send({ type: 'resync' });
+  const paused = await device.next((m) => m.type === 'state' && m.resync);
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.ok(!browser.inbox.some((m) => m.type === 'cue'), 'cue raced ahead of the TV pause');
+
+  device.send({ type: 'resync-ready', resyncId: paused.resyncId });
+  const cue = await browser.next((m) => m.type === 'cue' && m.resyncId === paused.resyncId);
+  const playing = await browser.next((m) => m.type === 'state' && m.cueStart, 3000);
+  assert.strictEqual(playing.state.paused, false);
+  assert.ok(Math.abs(playing.state.atServerTime - cue.startAt) < 10);
+
+  browser.close();
+  device.close();
+});
+
 test('a departing viewer is removed from the roster', async () => {
   await ensureServer();
   const room = 'TESTGG';

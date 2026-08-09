@@ -14,6 +14,7 @@ const {
   parseWakeLockSize,
   parseAudioFocusPaused,
   inferFirePaused,
+  parseFireSnapshot,
 } = require('../agent/drivers/androidtv');
 
 const DUMP = `
@@ -196,6 +197,58 @@ test('Fire TV pause is inferred from focus and wake locks, not a frozen session'
     true
   );
   assert.strictEqual(inferFirePaused({ app: 'com.amazon.tv.launcher', wakeLockSize: 4, focusPaused: true }), null);
+  assert.strictEqual(
+    inferFirePaused({ app: 'com.netflix.ninja', wakeLockSize: 2, focusPaused: false }),
+    true,
+    'retained Netflix audio focus must not turn a real pause back into play'
+  );
+});
+
+test('Fire TV telemetry is read in one tagged ADB snapshot', async () => {
+  const calls = [];
+  const driver = new AndroidTvDriver({
+    serial: 'fire:5555',
+    flavor: 'firetv',
+    exec: async (_adb, args) => {
+      calls.push(args.join(' '));
+      return {
+        stdout: [
+          '__DUET_WINDOW__',
+          'mCurrentFocus=Window{x u0 com.netflix.ninja/com.netflix.ninja.MainActivity}',
+          '__DUET_POWER__',
+          'Wake Locks: size=4',
+          '__DUET_AUDIO__',
+          'Audio Focus stack entries (last is top of stack):',
+          '  pack: com.netflix.ninja',
+          'Audio event log:',
+          '__DUET_MEDIA__',
+          '',
+          '__DUET_UPTIME__',
+          '123.50 1.0',
+        ].join('\n'),
+      };
+    },
+  });
+  assert.deepStrictEqual(await driver.position(), { position: null, paused: false });
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(parseFireSnapshot('__DUET_POWER__\nWake Locks: size=2\n').power.trim(), 'Wake Locks: size=2');
+});
+
+test('a blind Nebula command uses dedicated play and pause keys, never a toggle', async () => {
+  const calls = [];
+  const driver = new AndroidTvDriver({
+    serial: 'nebula',
+    flavor: 'nebula',
+    exec: async (_adb, args) => {
+      calls.push(args.join(' '));
+      return { stdout: '' };
+    },
+  });
+  await driver.pause();
+  await driver.play();
+  assert.ok(calls.some((line) => line.includes('keyevent 127')));
+  assert.ok(calls.some((line) => line.includes('keyevent 126')));
+  assert.ok(!calls.some((line) => line.includes('keyevent 85')));
 });
 
 test('media session parsing prefers the Netflix player', () => {

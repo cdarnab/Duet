@@ -161,17 +161,28 @@ function parseAudioFocusPaused(dump, pkg = /netflix/i) {
  * Fire Netflix ninja freezes PlaybackState. Use live session if it exists,
  * else audio focus, else wake-lock size (HA / python-androidtv).
  */
-function inferFirePaused({ app, wakeLockSize, focusPaused, session, uptimeMs } = {}) {
+function inferFirePaused({ app, wakeLockSize, focusPaused, playbackPaused, session, uptimeMs } = {}) {
   if (session && typeof session.paused === 'boolean' && isLivePlayhead(session, uptimeMs)) {
     return session.paused;
   }
   if (!app || !/netflix/i.test(app)) return null;
-  if (typeof focusPaused === 'boolean') return focusPaused;
+  // Netflix often retains audio focus after it pauses. A small playback
+  // wake-lock set is the more useful signal in that disagreement.
   if (Number.isFinite(wakeLockSize)) {
-    if (wakeLockSize >= 3) return false;
-    if (wakeLockSize >= 1) return true;
+    if (wakeLockSize >= 1 && wakeLockSize < 3) return true;
   }
+  if (typeof playbackPaused === 'boolean') return playbackPaused;
+  if (typeof focusPaused === 'boolean') return focusPaused;
+  if (Number.isFinite(wakeLockSize) && wakeLockSize >= 3) return false;
   return null;
+}
+
+function parseFireSnapshot(text) {
+  const sections = {};
+  const re = /__DUET_([A-Z]+)__\r?\n([\s\S]*?)(?=__DUET_[A-Z]+__|$)/g;
+  let match;
+  while ((match = re.exec(String(text || '')))) sections[match[1].toLowerCase()] = match[2];
+  return sections;
 }
 
 /** Parse dumpsys media_session. Prefer a Netflix session when several exist. */
@@ -253,6 +264,7 @@ class AndroidTvDriver {
     this.skipConnect = Boolean(serial) || mdns;
     this.adb = adb;
     this._exec = exec || run;
+    this._adbChain = Promise.resolve();
     this.label = this.serial;
     this.capabilities = {
       readPosition: false,
@@ -323,7 +335,10 @@ class AndroidTvDriver {
   async _toggleTo(paused, known) {
     const state = known && typeof known.paused === 'boolean' ? known : await this.position();
     if (state && state.paused === paused) return;
-    return this._key(KEY.playPause);
+    if (state && typeof state.paused === 'boolean') return this._key(KEY.playPause);
+    // A blind toggle can turn a correctly-playing TV off when a duplicate
+    // command arrives. Android's dedicated media keys are idempotent.
+    return this._key(paused ? KEY.pause : KEY.play);
   }
 
   async currentApp() {
@@ -404,6 +419,27 @@ class AndroidTvDriver {
   }
 
   async _firePosition() {
+    const snapshotCommand = [
+      'echo __DUET_WINDOW__',
+      'dumpsys window 2>/dev/null | grep -e mCurrentFocus -e mFocusedApp',
+      'echo __DUET_POWER__',
+      'dumpsys power | grep -e Locks -e size=',
+      'echo __DUET_AUDIO__',
+      'dumpsys audio',
+      'echo __DUET_MEDIA__',
+      'dumpsys media_session',
+      'echo __DUET_UPTIME__',
+      'cat /proc/uptime',
+    ].join('\n');
+    try {
+      const sections = parseFireSnapshot(await this._shell(snapshotCommand));
+      if (sections.window !== undefined) return this._fireReading(sections);
+    } catch {
+      /* use the compatibility probes below */
+    }
+
+    // Compatibility fallback for older Android shells that cannot run the
+    // tagged snapshot. The normal path above is one ADB round trip, not five.
     let windowDump = '';
     let powerDump = '';
     let audioDump = '';
@@ -428,12 +464,27 @@ class AndroidTvDriver {
     } catch {
       /* optional */
     }
+    return this._fireReading({
+      window: windowDump,
+      power: powerDump,
+      audio: audioDump,
+      media: sessionDump,
+      uptime: String((await this._uptimeMs()) || ''),
+    }, true);
+  }
+
+  _fireReading(sections, uptimeAlreadyMs = false) {
+    const audioPlayback = parseAudioPlayback(sections.audio);
+    const uptimeMs = uptimeAlreadyMs
+      ? Number(sections.uptime) || null
+      : Math.round(parseFloat(String(sections.uptime || '').trim().split(/\s+/)[0]) * 1000);
     const paused = inferFirePaused({
-      app: parseCurrentApp(windowDump),
-      wakeLockSize: parseWakeLockSize(powerDump),
-      focusPaused: parseAudioFocusPaused(audioDump),
-      session: parseMediaSession(sessionDump),
-      uptimeMs: await this._uptimeMs(),
+      app: parseCurrentApp(sections.window),
+      wakeLockSize: parseWakeLockSize(sections.power),
+      focusPaused: parseAudioFocusPaused(sections.audio),
+      playbackPaused: audioPlayback?.paused,
+      session: parseMediaSession(sections.media),
+      uptimeMs: Number.isFinite(uptimeMs) ? uptimeMs : null,
     });
     if (typeof paused !== 'boolean') return null;
     return { position: null, paused };
@@ -453,11 +504,16 @@ class AndroidTvDriver {
   }
 
   async _shell(cmd) {
-    const { stdout } = await this._exec(this.adb, ['-s', this.serial, 'shell', cmd], {
-      timeout: 8000,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    return stdout;
+    const operation = async () => {
+      const { stdout } = await this._exec(this.adb, ['-s', this.serial, 'shell', cmd], {
+        timeout: 8000,
+        maxBuffer: 8 * 1024 * 1024,
+      });
+      return stdout;
+    };
+    const next = this._adbChain.then(operation, operation);
+    this._adbChain = next.catch(() => {});
+    return next;
   }
 }
 
@@ -479,4 +535,5 @@ module.exports = {
   parseWakeLockSize,
   parseAudioFocusPaused,
   inferFirePaused,
+  parseFireSnapshot,
 };

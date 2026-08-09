@@ -302,6 +302,39 @@ function broadcast(room, msg, exceptId) {
   }
 }
 
+function schedulePlayingState(room, { startAt, position, byId }) {
+  clearTimeout(room.startTimer);
+  const delay = Math.max(0, startAt - Date.now());
+  room.startTimer = setTimeout(() => {
+    room.startTimer = null;
+    const state = room.applyState(
+      { paused: false, position, rate: 1, atServerTime: startAt },
+      byId
+    );
+    broadcast(room, { type: 'state', state, serverTime: Date.now(), cueStart: true });
+  }, delay);
+}
+
+function finishResync(room, pending) {
+  if (!pending || room.pendingResync !== pending || pending.finished) return;
+  pending.finished = true;
+  clearTimeout(pending.timeout);
+  room.pendingResync = null;
+  const startAt = Date.now() + 2000;
+  broadcast(room, {
+    type: 'cue',
+    startAt,
+    from: pending.from,
+    position: pending.position,
+    resyncId: pending.id,
+  });
+  schedulePlayingState(room, {
+    startAt,
+    position: pending.position,
+    byId: pending.from,
+  });
+}
+
 wss.on('connection', (socket, req) => {
   const member = new Member(crypto.randomUUID(), socket);
   let room = null;
@@ -375,6 +408,8 @@ wss.on('connection', (socket, req) => {
 
       case 'state': {
         if (!room) return;
+        clearTimeout(room.startTimer);
+        room.startTimer = null;
         const state = room.applyState(
           {
             paused: msg.paused,
@@ -396,11 +431,45 @@ wss.on('connection', (socket, req) => {
       /* Pause everyone, then count in. Seek-only resync is a no-op on Fire/Nebula. */
       case 'resync': {
         if (!room) return;
+        clearTimeout(room.startTimer);
+        room.startTimer = null;
+        if (room.pendingResync) {
+          clearTimeout(room.pendingResync.timeout);
+          room.pendingResync = null;
+        }
         const at = DuetSync.projected(room.state, Date.now());
         const state = room.applyState({ paused: true, position: at, rate: 1 }, member.id);
-        broadcast(room, { type: 'state', state, serverTime: Date.now(), resync: true });
-        const startAt = Date.now() + 3200;
-        broadcast(room, { type: 'cue', startAt, from: member.id, position: state.position });
+        const pending = {
+          id: crypto.randomUUID(),
+          from: member.id,
+          position: state.position,
+          expected: new Set(
+            [...room.members.values()].filter((m) => m.surface === 'device').map((m) => m.id)
+          ),
+          ready: new Set(),
+          finished: false,
+          timeout: null,
+        };
+        room.pendingResync = pending;
+        broadcast(room, {
+          type: 'state', state, serverTime: Date.now(), resync: true, resyncId: pending.id,
+        });
+        if (!pending.expected.size) {
+          finishResync(room, pending);
+        } else {
+          pending.timeout = setTimeout(() => finishResync(room, pending), 3000);
+        }
+        return;
+      }
+
+      case 'resync-ready': {
+        if (!room || !room.pendingResync) return;
+        const pending = room.pendingResync;
+        if (msg.resyncId !== pending.id || !pending.expected.has(member.id)) return;
+        pending.ready.add(member.id);
+        if ([...pending.expected].every((id) => pending.ready.has(id))) {
+          finishResync(room, pending);
+        }
         return;
       }
 
@@ -432,8 +501,10 @@ wss.on('connection', (socket, req) => {
       case 'cue': {
         if (!room) return;
         const startAt = Date.now() + Math.min(15000, Math.max(1000, Number(msg.inMs) || 3000));
-        broadcast(room, { type: 'cue', startAt, from: member.id, position: Number(msg.position) || room.state.position });
-        send(socket, { type: 'cue', startAt, from: member.id, position: Number(msg.position) || room.state.position, self: true });
+        const position = Number(msg.position) || room.state.position;
+        broadcast(room, { type: 'cue', startAt, from: member.id, position });
+        send(socket, { type: 'cue', startAt, from: member.id, position, self: true });
+        schedulePlayingState(room, { startAt, position, byId: member.id });
         return;
       }
 
@@ -453,6 +524,12 @@ wss.on('connection', (socket, req) => {
   socket.on('close', () => {
     if (!room) return;
     room.remove(member.id);
+    if (room.pendingResync?.expected.has(member.id)) {
+      room.pendingResync.expected.delete(member.id);
+      if ([...room.pendingResync.expected].every((id) => room.pendingResync.ready.has(id))) {
+        finishResync(room, room.pendingResync);
+      }
+    }
     broadcast(room, { type: 'left', id: member.id });
   });
 
