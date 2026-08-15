@@ -53,6 +53,8 @@ class Room {
     this.chat = [];
     this.createdAt = Date.now();
     this.creator = creator;
+    this.pendingResync = null;
+    this.startTimer = null;
     this.state = {
       paused: true,
       position: 0,

@@ -351,4 +351,85 @@ test('a device that rounds its position to the second is not thrashed', async ()
   }
 });
 
+test('slow device polls never overlap', async () => {
+  let active = 0;
+  let maximum = 0;
+  let reads = 0;
+  const driver = {
+    label: 'Slow TV',
+    capabilities: { publishPaused: false },
+    async position() {
+      reads += 1;
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await sleep(60);
+      active -= 1;
+      return null;
+    },
+  };
+  const agent = new Agent({ server: 'http://127.0.0.1:1', room: 'SLOWTV', driver });
+  agent.connected = true;
+  agent.state.seq = 0;
+  await Promise.all([agent.tick(), agent.tick(), agent.tick()]);
+  assert.strictEqual(reads, 1);
+  assert.strictEqual(maximum, 1);
+});
+
+test('a transport command waits for an in-flight device poll', async () => {
+  const order = [];
+  const driver = {
+    label: 'Ordered TV',
+    capabilities: { publishPaused: false },
+    async position() {
+      order.push('read-start');
+      await sleep(40);
+      order.push('read-end');
+      return null;
+    },
+    async pause() { order.push('pause'); },
+  };
+  const agent = new Agent({ server: 'http://127.0.0.1:1', room: 'ORDERD', driver });
+  agent.connected = true;
+  agent.state.seq = 0;
+  agent.state.paused = true;
+  agent._assumedPaused = false;
+  const poll = agent.tick();
+  const command = agent._enqueueTransport(() => agent._followRoomNow());
+  await Promise.all([poll, command]);
+  assert.deepStrictEqual(order, ['read-start', 'read-end', 'pause']);
+});
+
+test('a failed TV command is rolled back so the next event can retry', async () => {
+  const driver = {
+    label: 'Failing TV',
+    capabilities: {},
+    async pause() { throw new Error('adb offline'); },
+  };
+  const agent = new Agent({ server: 'http://127.0.0.1:1', room: 'FAILTV', driver });
+  agent._assumedPaused = false;
+  await assert.rejects(() => agent._commandTransport(true), /adb offline/);
+  assert.strictEqual(agent._assumedPaused, false);
+  assert.strictEqual(agent._commandUntil, 0);
+});
+
+test('a laptop seek becomes approximate skip commands on an open-loop TV', async () => {
+  const jumps = [];
+  const driver = {
+    label: 'Capsule',
+    capabilities: {
+      readPosition: false,
+      canJump: true,
+      jumpBack: 10,
+      jumpForward: 10,
+    },
+    async jump(dir, times) { jumps.push({ dir, times }); },
+  };
+  const agent = new Agent({ server: 'http://127.0.0.1:1', room: 'SEEKTV', driver });
+  agent.state = { paused: true, position: 100, rate: 1, atServerTime: Date.now(), seq: 2 };
+  const next = { ...agent.state, position: 130, seq: 3 };
+  const delta = agent._openLoopSeekDelta(next);
+  await agent._followRoomSeek(delta);
+  assert.deepStrictEqual(jumps, [{ dir: 'forward', times: 3 }]);
+});
+
 test.after(() => server.close());

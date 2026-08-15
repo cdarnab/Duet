@@ -148,11 +148,11 @@
   $('resync').addEventListener('click', () => {
     client.resync();
     $('resync').textContent = 'Sent';
-    $('advice').textContent = 'Asking both players to snap to the room time…';
+    $('advice').textContent = 'Pausing every player, waiting for connected TVs, then counting everyone in…';
     setTimeout(() => ($('resync').textContent = 'Resync'), 1500);
   });
   client.on('resync', () => {
-    $('advice').textContent = 'Resync sent — both browsers should jump to the same spot.';
+    $('advice').textContent = 'Players are pausing now. The countdown starts after connected TVs are ready.';
   });
 
   client.on('cue', ({ startAt }) => {
