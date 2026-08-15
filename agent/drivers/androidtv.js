@@ -313,6 +313,13 @@ class AndroidTvDriver {
     const probe = await this.position();
     this.capabilities.readPosition = Boolean(probe && Number.isFinite(probe.position));
     this.capabilities.readPaused = Boolean(probe && typeof probe.paused === 'boolean');
+    // Nebula's Netflix APK often exposes transport without a playhead. The
+    // original code detected that pause state but accidentally left upstream
+    // publishing disabled, so remote presses could never reach the laptop.
+    if (this.flavor === 'nebula') {
+      this.capabilities.publishPaused = this.capabilities.readPaused;
+      this.capabilities.publishStableMs = 900;
+    }
     return this;
   }
 
@@ -394,18 +401,36 @@ class AndroidTvDriver {
    */
   async position() {
     if (this.flavor === 'firetv') return this._firePosition();
+    if (this.flavor === 'nebula') {
+      const snapshotCommand = [
+        'echo __DUET_MEDIA__',
+        'dumpsys media_session',
+        'echo __DUET_AUDIO__',
+        'dumpsys audio',
+        'echo __DUET_UPTIME__',
+        'cat /proc/uptime',
+      ].join('\n');
+      try {
+        const sections = parseFireSnapshot(await this._shell(snapshotCommand));
+        if (sections.media !== undefined) return this._androidReading(sections);
+      } catch {
+        /* use compatibility probes below */
+      }
+    }
     try {
       const sessionDump = await this._shell('dumpsys media_session');
       const session = parseMediaSession(sessionDump);
       if (session && typeof session.paused === 'boolean') {
-        let position = session.position;
         const uptime = await this._uptimeMs();
-        if (!isLivePlayhead({ ...session, position }, uptime)) {
-          position = null;
-        } else if (Number.isFinite(position) && !session.paused && session.updatedAt && uptime) {
-          position += Math.max(0, (uptime - session.updatedAt) / 1000);
+        if (isLivePlayhead(session, uptime)) {
+          let position = session.position;
+          if (Number.isFinite(position) && !session.paused && session.updatedAt && uptime) {
+            position += Math.max(0, (uptime - session.updatedAt) / 1000);
+          }
+          return { position: Number.isFinite(position) ? position : null, paused: session.paused };
         }
-        return { position: Number.isFinite(position) ? position : null, paused: session.paused };
+        // A frozen Netflix session is not valid transport evidence. Continue
+        // to current audio playback instead of publishing its stale state.
       }
     } catch {
       /* try audio */
@@ -416,6 +441,19 @@ class AndroidTvDriver {
     } catch {
       return null;
     }
+  }
+
+  _androidReading(sections) {
+    const session = parseMediaSession(sections.media);
+    const uptime = Math.round(parseFloat(String(sections.uptime || '').trim().split(/\s+/)[0]) * 1000);
+    if (session && isLivePlayhead(session, Number.isFinite(uptime) ? uptime : null)) {
+      let position = session.position;
+      if (Number.isFinite(position) && !session.paused && session.updatedAt) {
+          position += Math.max(0, (uptime - session.updatedAt) / 1000);
+      }
+      return { position: Number.isFinite(position) ? position : null, paused: session.paused };
+    }
+    return parseAudioPlayback(sections.audio);
   }
 
   async _firePosition() {

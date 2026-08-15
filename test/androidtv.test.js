@@ -251,6 +251,52 @@ test('a blind Nebula command uses dedicated play and pause keys, never a toggle'
   assert.ok(!calls.some((line) => line.includes('keyevent 85')));
 });
 
+test('Nebula publishes remote pause when its Netflix transport is readable', async () => {
+  const driver = new AndroidTvDriver({
+    serial: 'nebula',
+    flavor: 'nebula',
+    exec: async (_adb, args) => {
+      const line = args.join(' ');
+      if (line.includes('getprop')) return { stdout: 'Capsule\n' };
+      if (line.includes('/proc/uptime')) return { stdout: '100.0 1.0\n' };
+      if (line.includes('media_session')) return { stdout: '' };
+      if (line.includes('dumpsys audio')) {
+        return {
+          stdout: 'AudioPlaybackConfiguration state:paused attr: usage=USAGE_MEDIA content=CONTENT_TYPE_MOVIE',
+        };
+      }
+      return { stdout: '' };
+    },
+  });
+  await driver.connect();
+  assert.strictEqual(driver.capabilities.readPaused, true);
+  assert.strictEqual(driver.capabilities.publishPaused, true);
+});
+
+test('Nebula ignores a frozen Netflix session and uses current audio pause state', async () => {
+  let calls = 0;
+  const driver = new AndroidTvDriver({
+    serial: 'nebula',
+    flavor: 'nebula',
+    exec: async () => {
+      calls += 1;
+      return {
+        stdout: [
+          '__DUET_MEDIA__',
+          'Session #1 com.netflix.mediaclient/Netflix',
+          ' state=PlaybackState {state=3, position=8000, updated=1000}',
+          '__DUET_AUDIO__',
+          'AudioPlaybackConfiguration state:paused attr: usage=USAGE_MEDIA content=CONTENT_TYPE_MOVIE',
+          '__DUET_UPTIME__',
+          '100.0 1.0',
+        ].join('\n'),
+      };
+    },
+  });
+  assert.deepStrictEqual(await driver.position(), { position: null, paused: true });
+  assert.strictEqual(calls, 1, 'Nebula transport polling should use one ADB round trip');
+});
+
 test('media session parsing prefers the Netflix player', () => {
   const parsed = parseMediaSession(DUMP);
   assert.ok(parsed);

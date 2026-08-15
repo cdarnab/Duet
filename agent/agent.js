@@ -103,12 +103,16 @@ class Agent extends EventEmitter {
         this._enqueueTransport(() => this._followRoomNow()).catch((err) => this.emit('error', err));
         break;
       case 'state':
+        const seekDelta = !msg.self ? this._openLoopSeekDelta(msg.state) : 0;
         this.state = msg.state;
         this.emit('roomstate', msg.state);
         if (msg.resync) {
           this._enqueueTransport(() => this._resync(msg.resyncId)).catch((err) => this.emit('error', err));
         } else if (!msg.self) {
-          this._enqueueTransport(() => this._followRoomNow()).catch((err) => this.emit('error', err));
+          this._enqueueTransport(async () => {
+            if (seekDelta) await this._followRoomSeek(seekDelta);
+            await this._followRoomNow();
+          }).catch((err) => this.emit('error', err));
         }
         break;
       case 'cue':
@@ -275,6 +279,29 @@ class Agent extends EventEmitter {
     this._commandUntil = Date.now() + hold;
     this._deviceStable = false;
     this._stableSince = 0;
+  }
+
+  _openLoopSeekDelta(nextState) {
+    const caps = this.driver.capabilities || {};
+    if (caps.readPosition || !caps.canJump || !nextState || this.state.seq < 0) return 0;
+    const now = this.serverNow();
+    const before = DuetSync.projected(this.state, now);
+    const after = DuetSync.projected(nextState, now);
+    const delta = after - before;
+    const step = delta < 0 ? Number(caps.jumpBack) || 10 : Number(caps.jumpForward) || 10;
+    return Math.abs(delta) >= Math.max(3, step / 2) ? delta : 0;
+  }
+
+  async _followRoomSeek(delta) {
+    const caps = this.driver.capabilities || {};
+    const dir = delta < 0 ? 'back' : 'forward';
+    const step = dir === 'back' ? Number(caps.jumpBack) || 10 : Number(caps.jumpForward) || 10;
+    // This is necessarily approximate: Netflix does not report where the TV
+    // landed. Cap commands so a bad state update cannot run away for minutes.
+    const times = Math.min(12, Math.max(1, Math.round(Math.abs(delta) / step)));
+    this.emit('manual', { note: `Mirroring laptop seek on TV: ${dir} about ${times * step}s` });
+    await this.driver.jump(dir, times);
+    this.estimator.reset();
   }
 
   _enqueueTransport(fn) {

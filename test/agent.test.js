@@ -412,4 +412,24 @@ test('a failed TV command is rolled back so the next event can retry', async () 
   assert.strictEqual(agent._commandUntil, 0);
 });
 
+test('a laptop seek becomes approximate skip commands on an open-loop TV', async () => {
+  const jumps = [];
+  const driver = {
+    label: 'Capsule',
+    capabilities: {
+      readPosition: false,
+      canJump: true,
+      jumpBack: 10,
+      jumpForward: 10,
+    },
+    async jump(dir, times) { jumps.push({ dir, times }); },
+  };
+  const agent = new Agent({ server: 'http://127.0.0.1:1', room: 'SEEKTV', driver });
+  agent.state = { paused: true, position: 100, rate: 1, atServerTime: Date.now(), seq: 2 };
+  const next = { ...agent.state, position: 130, seq: 3 };
+  const delta = agent._openLoopSeekDelta(next);
+  await agent._followRoomSeek(delta);
+  assert.deepStrictEqual(jumps, [{ dir: 'forward', times: 3 }]);
+});
+
 test.after(() => server.close());
